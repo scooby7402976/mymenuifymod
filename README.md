@@ -1,0 +1,2 @@
+# mymenuifymod
+ wii theme installer
