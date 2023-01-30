@@ -87,7 +87,7 @@ u8 *get_ioslist(u32 *cnt) {
 
     icnt = 0;
     for(i = 0; i < tcnt; i++) {
-        if(*((u32 *)(&(buf[i]))) == 1 && (u32)buf[i] > 2 && (u32)buf[i] < 0x100) {
+        if(*((u32 *)(&(buf[i]))) == 1 && (u32)buf[i] > 200 && (u32)buf[i] < 252) {
             icnt++;
             ioses = (u8 *)realloc(ioses, sizeof(u8) * icnt);
             ioses[icnt - 1] = (u8)buf[i];
@@ -98,7 +98,7 @@ u8 *get_ioslist(u32 *cnt) {
     icnt = 0;
 
     for(i = 0; i < tcnt; i++) {
-        if(*((u32 *)(&(buf[i]))) == 1 && (u32)buf[i] > 2 && (u32)buf[i] < 0x100) {
+        if(*((u32 *)(&(buf[i]))) == 1 && (u32)buf[i] > 200 && (u32)buf[i] < 252) {
             icnt++;
             ioses[icnt - 1] = (u8)buf[i];
         }

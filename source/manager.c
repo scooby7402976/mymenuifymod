@@ -63,9 +63,9 @@ void Disclaimer(void) {
 		buttons = wpad_waitbuttons();
 		
 		if((buttons == BUTTON_B) || (buttons == BUTTON_HOME)) {
-			printf("\t\tExiting ..... \n");
+			printf("\n\t\tExiting ..... \n");
 			sleep(1);
-			sysHBC();
+			exit(0);
 		}
 		if(buttons == BUTTON_A) {
 			break;
@@ -795,7 +795,7 @@ int theme_ios_menu(int default_ios) {
     {
         con_clear();
 		//printf("\x1B[%d;%dH",4,1);	// move console cursor to y/x
-		printf("  Current IOS : %d r%d						 System Menu : %s_%s\n\n", IOS_GetVersion(), IOS_GetRevision(), getsysvernum(systemmenuVersion), getregion(systemmenuVersion));
+		printf("  Current IOS : %d_r%d						 System Menu : %s_%s\n\n", IOS_GetVersion(), IOS_GetRevision(), getsysvernum(systemmenuVersion), getregion(systemmenuVersion));
         printf("\t\tIt is recommended to choose an IOS with NAND\n");
         printf("\t\tpermissions patched, like IOS249(d2x56) .\n\n");
 		printf("\t\tSelect the IOS you want to load: IOS     \b\b\b\b");
@@ -806,7 +806,7 @@ int theme_ios_menu(int default_ios) {
 		printf("\t\t[A] Select Ios .\t[B] Return to Device Menu .\n");
 		printf("\t\t[Home] Return to System Menu .\n\n");
         buttons = wpad_waitbuttons();
-
+		if(buttons == BUTTON_HOME) sys_loadmenu();
         if(buttons == BUTTON_LEFT) { //|| buttons == PAD_BUTTON_LEFT)
             if (selection > 0) selection -= 1;
             else selection = ioscount - 1;
@@ -830,7 +830,7 @@ void theme_device_menu() {
 	
 	for(;;) {
 		con_clear();
-		printf("  Current IOS : %d r%d						 System Menu : %s_%s\n\n", IOS_GetVersion(), IOS_GetRevision(), getsysvernum(systemmenuVersion), getregion(systemmenuVersion));
+		printf("  Current IOS : %d_r%d						 System Menu : %s_%s\n\n", IOS_GetVersion(), IOS_GetRevision(), getsysvernum(systemmenuVersion), getregion(systemmenuVersion));
 		printf("\t\tSelect source device :      \b\b\b\b");
 		set_highlight(true);
 		printf(" %s \n\n\n\n\n\n\n\n", device_Name(device));
@@ -893,7 +893,7 @@ void theme_manage_menu() {
 	
 	for(;;) {
 		con_clear();
-		printf("  Current IOS : %d r%d						 System Menu : %s_%s\n\n", IOS_GetVersion(), IOS_GetRevision(), getsysvernum(systemmenuVersion), getregion(systemmenuVersion));
+		printf("  Current IOS : %d_r%d						 System Menu : %s_%s\n\n", IOS_GetVersion(), IOS_GetRevision(), getsysvernum(systemmenuVersion), getregion(systemmenuVersion));
 		printf("\t\t[+] Theme :\t%s\n", themefile[selected].name);
 		printf("\t\t - File size :\t%.2f MB\n\n", sizeoffile);
 		printf("\t\t[*] Action :           \b\b\b\b\b\b\b\b\b");
@@ -985,7 +985,7 @@ void theme_manage_menu() {
 		if(currenttheme.region != themefile[selected].region)
 		printf("\n\nInstall can not continue !\nThe install theme region is not a match\nfor the system menu region .\n\nPlease press any button to Exit to HBC !\n");
 		wpad_waitbuttons();
-        sysHBC();
+        exit(0);
 	}
 	tmpfile = fopen(filepath, "rb");
 	if(!tmpfile) {
@@ -1012,15 +1012,17 @@ void theme_list_menu() {
 	
 	filecnt = filelist_retrieve();
 	
-	if(!filecnt) {
-        printf("\n\t\t[-] No Files Found .\n");
-        return;
-    }
+	
 	
 	for(;;) {
 		con_clear();
-		printf("\n  Current IOS : %d r%d						 System Menu : %s_%s\n", IOS_GetVersion(), IOS_GetRevision(), getsysvernum(systemmenuVersion), getregion(systemmenuVersion));
+		printf("\n  Current IOS : %d_r%d						 System Menu : %s_%s\n", IOS_GetVersion(), IOS_GetRevision(), getsysvernum(systemmenuVersion), getregion(systemmenuVersion));
 		printf("\t\t[ %d ] Theme files . Select a Theme :\n\n", filecnt);
+		if(!filecnt) {
+			printf("\t\t[-] No Files Found .\n");
+			return;
+		}
+		else
 		for (cnt = start; cnt < filecnt; cnt++) {
             // Files per page limit 
             if ((cnt - start) >= FILES_PER_PAGE)
@@ -1034,10 +1036,10 @@ void theme_list_menu() {
             printf(" %s \n", themefile[cnt].name);
         }
 		printf("\n");
-		printf("\t\t[Up]/[Down] Toggle Theme .\n");
-		printf("\t\t[Left]/[Right] to Toggle Page .\n");
+		printf("\t\t[Up]/[Down]/[Left]/[Right] Toggle Theme .\n");
 		printf("\t\t[A] Select Theme .  [B] Select Device Menu .\n");
-		printf("\t\t[1] Reload Ios . [Plus+] Download/Install Original Menu .\n");
+		printf("\t\t[Minus-] Reload Ios .\n");
+		printf("\t\t[Plus+] Download/Install Original Menu .\n");
 		printf("\t\t[Home] Return to System Menu .\n");
 		
 		buttons = wpad_waitbuttons();
@@ -1052,10 +1054,10 @@ void theme_list_menu() {
 		else if (buttons == BUTTON_A) {
 			theme_manage_menu(themefile[selected].name);
 		}
-		else if(buttons == BUTTON_HOME) exit(0);
-		else if(buttons == BUTTON_LEFT) selected -= 10;
-		else if(buttons == BUTTON_RIGHT) selected += 10;
-		if(buttons == BUTTON_1) {
+		else if(buttons == BUTTON_HOME) sys_loadmenu();
+		else if(buttons == BUTTON_LEFT) selected -= 9;
+		else if(buttons == BUTTON_RIGHT) selected += 9;
+		if(buttons == BUTTON_MINUS) {
 			filecnt = 0, start = 0, selected = 0;
 			int tmpdevice = fatdevicemounted;
 			
@@ -1074,6 +1076,8 @@ void theme_list_menu() {
 				//PAD_Init();
 				ISFS_Initialize();
 				fatdevicemounted = Fat_Mount(tmpdevice);
+				if(fatdevicemounted <= 0) break;
+				themefile = NULL;
 				filecnt = filelist_retrieve();
 			}
 		}
@@ -1160,11 +1164,11 @@ void menu_loop() {
 	systemmenuVersion = GetSysMenuVersion();
 	if(systemmenuVersion > 518) {
 		// check installed .app file if custom version number
-		systemmenuVersion = checkcustomsystemmenuversion();//checkcustom();
+		systemmenuVersion = checkcustomsystemmenuversion();
 	}
 	
 	con_clear();
-	printf("  Current IOS : %d r%d						 System Menu : %s_%s\n\n", IOS_GetVersion(), IOS_GetRevision(), getsysvernum(systemmenuVersion), getregion(systemmenuVersion));
+	printf("  Current IOS : %d_r%d						 System Menu : %s_%s\n\n", IOS_GetVersion(), IOS_GetRevision(), getsysvernum(systemmenuVersion), getregion(systemmenuVersion));
 	printf("\t\t[*] Welcome to MyMenuifyMod!\n\n\t\tBuilt for all System menu versions 4.0 - 4.3!\n\n");
 	sleep(2);
 	
@@ -1178,6 +1182,8 @@ int main(int argc, char **argv) {
 	
 	__exception_setreload(5);
 	
+	//int ios = IOS_GetVersion();
+	//IOS_ReloadIOS(ios);
 	if(AHBPROT_DISABLED) {
 		IOSPATCH_AHBPROT();
 		IOSPATCH_Apply();

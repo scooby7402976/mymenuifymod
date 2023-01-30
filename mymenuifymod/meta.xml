@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<app version="1">
+	<name>MyMenuifyMod</name>
+	<version>2.0</version>
+	<coder>Scooby74029</coder>
+	<short_description>(Un)Install Themes</short_description>
+	<long_description>Press the "A" button to (un)install/delete .csm or .app files .
+Uninstalling a theme will download the app file for the currently installed system menu .</long_description>
+<ahb_access/>
+</app>
+
