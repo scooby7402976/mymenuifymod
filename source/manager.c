@@ -37,6 +37,8 @@ Fatfile *themefile = NULL;
 static s32 filecnt = 0, start = 0, selected = 0; //, pagecount = 1;
 u8 commonkey[16] = { 0xeb, 0xe4, 0x2a, 0x22, 0x5e, 0x85, 0x93, 0xe4, 0x48,0xd9, 0xc5, 0x45, 0x73, 0x81, 0xaa, 0xf7 };
 dirent_t *nandfilelist;
+bool priiloader = false;
+
 //dirent_t *neeklist;
 //u32 neekcount,cntr;
 const char *wiishoppath = "http://nus.cdn.shop.wii.com/ccs/download/0000000100000002/";
@@ -923,6 +925,11 @@ void theme_manage_menu() {
 	}
 	
 	con_clear();
+	if(!priiloader) {
+		printf("\t\t(Un)Installs/Delete Disabled . Priiloader not detected .\n");
+		sleep(3);
+		return;
+	}
 	if(action == 2) {
 		
 		for(;;) {
@@ -1039,7 +1046,7 @@ void theme_list_menu() {
 		printf("\t\t[Up]/[Down]/[Left]/[Right] Toggle Theme .\n");
 		printf("\t\t[A] Select Theme .  [B] Select Device Menu .\n");
 		printf("\t\t[Minus-] Reload Ios .\n");
-		printf("\t\t[Plus+] Download/Install Original Menu .\n");
+		printf("\t\t[Plus+] Download/Install Original Theme .\n");
 		printf("\t\t[Home] Return to System Menu .\n");
 		
 		buttons = wpad_waitbuttons();
@@ -1156,10 +1163,11 @@ void menu_loop() {
 	
 	if(!checkforpriiloader()) {
 		
-		printf("\t\tPriiloader not detected ! Press any button to exit .");
-		u32 buttons = wpad_waitbuttons();
-		exit(0);
+		printf("\t\tPriiloader not detected ! Theme Installs disabled .\nPress any button to Continue .");
+		wpad_waitbuttons();
+		priiloader = false;
 	}
+	else priiloader = true;
 	
 	systemmenuVersion = GetSysMenuVersion();
 	if(systemmenuVersion > 518) {
