@@ -861,13 +861,13 @@ void theme_device_menu() {
 	}
 	
 	printf("\t\tMounting %s ..... ", device_Name(device));
-	if(debug) Fat_Unmount(1);
+	//if(debug) Fat_Unmount(1);
 	fatdevicemounted = Fat_Mount(device);
 	if(fatdevicemounted < 0) {
 		printf("failed .\n\n");
 		printf("\t\t[-]   Unable to mount %s .\n", device_Name(device));
 		printf("\t\tPress any button to continue .");
-		buttons = wpad_waitbuttons();
+		wpad_waitbuttons();
 	}
 	else printf("complete . \n\n");
 	
@@ -879,8 +879,8 @@ void theme_manage_menu() {
 	FILE *tmpfile;
 	u32 buttons, size;
 	int success;
-	char *Actions[3] = {"Install  ", "Uninstall", "Delete   "};
-	char *confirmActions[2] = {"No ", "Yes"};
+	char *Actions[3] = {"Install  \b\b", "Uninstall", "Delete   \b\b\b"};
+	char *confirmActions[2] = {"No  \b", "Yes"};
 	int action = 0;
 	int confirmaction = 0;
 	
@@ -898,7 +898,7 @@ void theme_manage_menu() {
 		printf("  Current IOS : %d_r%d						 System Menu : %s_%s\n\n", IOS_GetVersion(), IOS_GetRevision(), getsysvernum(systemmenuVersion), getregion(systemmenuVersion));
 		printf("\t\t[+] Theme :\t%s\n", themefile[selected].name);
 		printf("\t\t - File size :\t%.2f MB\n\n", sizeoffile);
-		printf("\t\t[*] Action :           \b\b\b\b\b\b\b\b\b");
+		printf("\t\t[*] Action :          \b\b\b\b\b\b\b\b\b");
 		set_highlight(true);
 		printf(" %s ", Actions[action]);
 		set_highlight(false);
@@ -935,7 +935,7 @@ void theme_manage_menu() {
 		for(;;) {
 			con_clear();
 			printf("  Current IOS : %d r%d						 System Menu : %s_%s\n\n", IOS_GetVersion(), IOS_GetRevision(), getsysvernum(systemmenuVersion), getregion(systemmenuVersion));
-			printf("\t\tDelete Theme %s . Are you sure ?     \b\b\b", themefile[selected].name);
+			printf("\t\tDelete Theme %s . Are you sure ?    \b\b\b", themefile[selected].name);
 			set_highlight(true);
 			printf(" %s \n\n", confirmActions[confirmaction]);
 			set_highlight(false);
@@ -976,7 +976,7 @@ void theme_manage_menu() {
 			success = downloadApp();
 			if(success <= 0) {
 				printf("unable to download .\n\nPress any button to continue .");
-				buttons = wpad_waitbuttons();
+				wpad_waitbuttons();
 				return;
 			}
 		}
@@ -1005,7 +1005,7 @@ void theme_manage_menu() {
 	if(action == 0) printf("\nInstalling %s ..... Complete .\n\n", themefile[selected].name);
 	else if(action == 1) printf("\nInstalling %s - Original System Menu Theme .... Complete .\n\n", themefile[selected].name);
 	printf("Press any button to exit to System Menu . \n");
-	buttons = wpad_waitbuttons();
+	wpad_waitbuttons();
 	sys_loadmenu();
 }
 void theme_list_menu() {
@@ -1019,7 +1019,7 @@ void theme_list_menu() {
 	
 	filecnt = filelist_retrieve();
 	
-	
+	if(!filecnt) return;
 	
 	for(;;) {
 		con_clear();
@@ -1055,7 +1055,6 @@ void theme_list_menu() {
 		else if (buttons == BUTTON_DOWN) selected += 1;
 		else if (buttons == BUTTON_B) {
 			filecnt = 0, start = 0, selected = 0;
-			Fat_Unmount(fatdevicemounted);
 			return;
 		}
 		else if (buttons == BUTTON_A) {
@@ -1071,7 +1070,7 @@ void theme_list_menu() {
 			con_clear();
 			ios = theme_ios_menu(defaultios);
 			if(ios != 0) {
-				Fat_Unmount(fatdevicemounted);
+				
 				Wpad_Disconnect();
 				ISFS_Deinitialize();
 				IOS_ReloadIOS(ios);
@@ -1079,6 +1078,7 @@ void theme_list_menu() {
 					IOSPATCH_AHBPROT();
 					IOSPATCH_Apply();
 				}
+				else IOSPATCH_Apply();
 				wpad_init();
 				//PAD_Init();
 				ISFS_Initialize();
@@ -1089,6 +1089,11 @@ void theme_list_menu() {
 			}
 		}
 		if(buttons == BUTTON_PLUS) {
+			if(!priiloader) {
+				printf("\t\t(Un)Installs/Delete Disabled . Priiloader not detected .\n");
+				sleep(3);
+				return;
+			}
 			success = downloadApp();
 			if(success <= 0) {
 				printf("unable to download .\n\nPress any button to continue .");
@@ -1144,13 +1149,15 @@ void theme_list_menu() {
 bool checkforpriiloader() {
 	dirent_t *priiloaderfiles = NULL;
 	u32 nandfilecnt;
-	int filecntr;
+	int filecntr, rtn;
 	char *searchstr;
 	
 	searchstr = "title_or.tmd";
-	getdir("/title/00000001/00000002/content",&priiloaderfiles,&nandfilecnt);
+	rtn = getdir("/title/00000001/00000002/content",&priiloaderfiles,&nandfilecnt);
+	if(rtn < 0)
+		return false;
 	for(filecntr = 0; filecntr < nandfilecnt; filecntr++) {
-		if(strcmp(priiloaderfiles[filecntr].name, searchstr) == 0)
+		if(!strcmp(priiloaderfiles[filecntr].name, searchstr))
 		return true;
 	}
 	return false; 
@@ -1196,6 +1203,7 @@ int main(int argc, char **argv) {
 		IOSPATCH_AHBPROT();
 		IOSPATCH_Apply();
 	}
+	else IOSPATCH_Apply();
 	/* Initialize subsystems */
     sys_init();
 	 
