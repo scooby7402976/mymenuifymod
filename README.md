@@ -12,6 +12,6 @@
 - Plus + button - download and install original system menu theme .app file
 - A button - select/(Un)install/delete
 - B button - back/exit
-- Home button = exit to System Menu
+- Home button - exit to System Menu
 - Left/Right - Navigate Menu
 - Up/Down - Select Theme file
