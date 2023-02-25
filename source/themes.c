@@ -41,7 +41,7 @@ s32 getdir(char *path, dirent_t **ent, u32 *cnt){
 	res = ISFS_ReadDir(path, NULL, &num);
 	if(res != ISFS_OK){
 		logfile("Error: could not get dir entry count! (result: %d)\n", res);
-		return -1;
+		return res;
 	}
 
 	char ebuf[ISFS_MAXPATH + 1];
@@ -57,7 +57,7 @@ s32 getdir(char *path, dirent_t **ent, u32 *cnt){
 	if(res != ISFS_OK){
 		logfile("ERROR: could not get name list! (result: %d)\n", res);
 		free(nbuf);
-		return -3;
+		return res;
 	}
 	
 	*cnt = num;

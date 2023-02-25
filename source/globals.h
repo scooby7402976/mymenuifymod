@@ -5,13 +5,13 @@
 #define null                0
 #define MB_SIZE		        1048576.0
 /* filelist constants */
-#define FILES_PER_PAGE		10
+#define FILES_PER_PAGE		8
 
 /* console constants */
-#define CONSOLE_XCOORD		40
-#define CONSOLE_YCOORD		102
+#define CONSOLE_XCOORD		42
+#define CONSOLE_YCOORD		103
 #define CONSOLE_WIDTH		550
-#define CONSOLE_HEIGHT		350
+#define CONSOLE_HEIGHT		318
 
 /* Constants */
 #define MAX_FILELIST_LEN	1024
@@ -30,7 +30,7 @@
 #define BUTTON_PLUS         4096
 #define BUTTON_MINUS        16
 
-#define debug               1
+#define debug               0
 
 #define MAX_THEMES                  500
 #define KNOWN_SYSTEMMENU_VERSIONS   15
