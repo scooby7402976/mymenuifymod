@@ -61,7 +61,7 @@ void Disclaimer(void) {
 
 		printf("\t\t\tTHIS APPLICATION COMES WITH NO WARRANTY AT ALL,\n");
 		printf("\t\t\tNEITHER EXPRESSED NOR IMPLIED.\n");
-		printf("\t\t\tI DO NOT TAKE ANY RESPONSIBILITY FOR ANY DAMAGE IN YOUR\n");
+		printf("\t\t\tI DO NOT TAKE ANY RESPONSIBILITY FOR ANY DAMAGE TO YOUR\n");
 		printf("\t\t\tWII CONSOLE BECAUSE OF IMPROPER USE OF THIS SOFTWARE.\n\n");
 
 		printf("\t\t[A] button to continue .\n");
@@ -106,7 +106,7 @@ void nopriiloadermessage() {
 	}
 	return;
 }
-void warnunsignedtheme() {
+int warnunsignedtheme() {
 	u32 buttons;
 	
 	for(;;) {
@@ -114,26 +114,27 @@ void warnunsignedtheme() {
 		printf("\t\t[*] Unsigned Theme detected .\n\n");
 
 		printf("\t\tIt is recommended to use www.wiithemer.org,\n");
-		printf("\t\tModMii, or wii theme manager to build official themes ,\n\n");
+		printf("\t\tModMii, or wii theme manager to build safe\n");
+		printf("\t\tand verified themes ,\n\n");
 		printf("\t\tOnly install this file if you made it\n");
 		printf("\t\tor trust where it came from .\n\n");
 		printf("\t\tYou may continue at own risk .\n\n\n");
 
 		printf("\t\t[A] button to continue .\n");
-		printf("\t\t[B] button to return to HBC.\n");
+		printf("\t\t[B] button to return to Theme Selection Menu.\n");
 		
 		buttons = wpad_waitbuttons();
 		
 		if((buttons == BUTTON_B) || (buttons == BUTTON_HOME)) {
-			printf("\n\t\tExiting ..... \n");
-			sleep(1);
-			exit(0);
+			//printf("\n\t\tExiting ..... \n");
+			//sleep(1);
+			return 1;
 		}
 		if(buttons == BUTTON_A) {
 			break;
 		}
 	}
-	return;
+	return 0;
 }
 void show_banner(void) {
     PNGUPROP imgProp;
@@ -600,7 +601,7 @@ bool checkofficialthemesig(char * name) {
 		}
 		for(i = 0; i < length; i++) {
 			if((themedata[i] == 119) && (themedata[i+15] == 169) && (themedata[i+26] == 57)) {
-				logfile("foundsig\n");
+				//logfile("foundsig\n");
 				if((themedata[i] == 119) && (themedata[i + 8] == 114)) { // w_______r
 					official_theme = 2;
 				}
@@ -609,7 +610,7 @@ bool checkofficialthemesig(char * name) {
 				}
 				
 				
-				logfile("official_theme[%d]\n", official_theme);
+				//logfile("official_theme[%d]\n", official_theme);
 				sigchecked = true;
 				free(themedata);
 				return true;
@@ -640,7 +641,7 @@ int downloadApp() {
     u32 http_status = 0;
 		
     tmpversion = GetSysMenuVersion();
-    logfile("dvers =%d \n", tmpversion);
+    //logfile("dvers =%d \n", tmpversion);
     if(tmpversion > 518) tmpversion = checkcustomsystemmenuversion();
 	
     con_clear();
@@ -673,12 +674,12 @@ int downloadApp() {
         }
         if(ret == 0 ) {
             free(path);
-            logfile("download failed !! ret(%d)\n",ret);
+            //logfile("download failed !! ret(%d)\n",ret);
             printf("Failed !! ret(%d)\n",ret);
             sleep(3);
             return -1;
         }
-        
+        free(path);
         u8* outbuf = (u8*)malloc(outlen);
         if(counter == 0) ret = http_get_result(&http_status, (u8 **)&s_tik, &outlen);
         if(counter == 1) ret = http_get_result(&http_status, (u8 **)&s_tmd, &outlen);
@@ -706,6 +707,8 @@ int downloadApp() {
         printf("Complete !! \n\n");
         if(outbuf != NULL)
             free(outbuf);
+		if(outbuf2 != NULL)
+            free(outbuf2);
     }
 	net_deinit();
 	
@@ -900,20 +903,20 @@ s32 filelist_retrieve() {
 	
 	printf("\t\tRetrieving file list ..... ");
     // Generate dirpath 
-	sprintf(dirpath, "%s:/themes", device_Name(fatdevicemounted));
+	sprintf(dirpath, "%s:/modthemes", device_Name(fatdevicemounted));
 	
 	DIR *mydir;
 	mydir = opendir(dirpath);
-	themedir = "themes";
+	themedir = "modthemes";
 	if(!mydir) {
 		printf("Failed .\n\t\tunable to open %s \n", dirpath);
-		sprintf(dirpath, "%s:/modthemes", device_Name(fatdevicemounted));
+		sprintf(dirpath, "%s:/themes", device_Name(fatdevicemounted));
 		mydir = opendir(dirpath);
-		themedir = "modthemes";
+		themedir = "themes";
 		if(!mydir) {
 			printf("\t\tunable to open %s \n", dirpath);
 			sleep(2);
-			sprintf(dirpath, "%s:/themes", device_Name(fatdevicemounted));
+			sprintf(dirpath, "%s:/modthemes", device_Name(fatdevicemounted));
 			Fat_MakeDir(dirpath);
 			return -99;
 		}
@@ -987,7 +990,7 @@ int theme_ios_menu(int default_ios) {
     {
         con_clear();
 		//printf("\x1B[%d;%dH",4,1);	// move console cursor to y/x
-		printf("  Current IOS : %d r%d						 System Menu : %s %s\n\n", IOS_GetVersion(), IOS_GetRevision(), getsysvernum(systemmenuVersion), getregion(systemmenuVersion));
+		printf("  Current IOS : %d v%d						 System Menu : %s %s\n\n", IOS_GetVersion(), IOS_GetRevision(), getsysvernum(systemmenuVersion), getregion(systemmenuVersion));
         printf("\t\tIt is recommended to choose an IOS with NAND\n");
         printf("\t\tpermissions patched, like IOS249(d2x56) .\n\n");
 		printf("\t\tSelect the IOS you want to load: IOS     \b\b\b\b");
@@ -1022,7 +1025,7 @@ void theme_device_menu() {
 	
 	for(;;) {
 		con_clear();
-		printf("  Current IOS : %d r%d						 System Menu : %s %s\n\n", IOS_GetVersion(), IOS_GetRevision(), getsysvernum(systemmenuVersion), getregion(systemmenuVersion));
+		printf("  Current IOS : %d v%d						 System Menu : %s %s\n\n", IOS_GetVersion(), IOS_GetRevision(), getsysvernum(systemmenuVersion), getregion(systemmenuVersion));
 		printf("\t\tSelect source device :      \b\b\b\b");
 		set_highlight(true);
 		printf(" %s \n\n\n\n\n\n\n\n", device_Name(device));
@@ -1068,9 +1071,8 @@ void theme_manage_menu() {
 	char filepath[256];
 	FILE *tmpfile;
 	u32 buttons, size;
-	int success;
-	char *limitedactions[2] = {"Install", "Delete"};
-	char *Actions[3] = {"Install", "Uninstall", "Delete"};
+	//int success;
+	char *Actions[2] = {"Install", "Delete"};
 	char *confirmActions[2] = {"No  \b", "Yes"};
 	int action = 0;
 	int confirmaction = 0;
@@ -1086,24 +1088,18 @@ void theme_manage_menu() {
 	if(!sigchecked) checkofficialthemesig(themefile[selected].name);
 	for(;;) {
 		con_clear();
-		printf("  Current IOS : %d r%d						 System Menu : %s %s\n\n", IOS_GetVersion(), IOS_GetRevision(), getsysvernum(systemmenuVersion), getregion(systemmenuVersion));
+		printf("  Current IOS : %d v%d						 System Menu : %s %s\n\n", IOS_GetVersion(), IOS_GetRevision(), getsysvernum(systemmenuVersion), getregion(systemmenuVersion));
 		printf("\t\t[+] Theme :\t%s\n", themefile[selected].name);
 		printf("\t\t - File size :\t%.2f MB\n", sizeoffile);
 		printf("\t\tTheme Signature: %s\n\n", officialthemes[official_theme]);
-		printf("\t\t[*] Action :          \b\b\b\b\b\b\b\b\b");
+		printf("\t\t[*] Action :        \b\b\b\b\b\b\b");
 		set_highlight(true);
-		if(official_theme == 1)
-			printf(" %s ", limitedactions[action]);
-		else
-			printf(" %s ", Actions[action]);
+		printf(" %s ", Actions[action]);
 		set_highlight(false);
 		printf(" Theme .\n\n");
 		printf("\t\t[Left]/[Right] Toggle Action .\n");
-		printf("\t\t[A]          \b\b\b\b\b\b\b\b\b");
-		if(official_theme == 1)
-			printf(" %s ", limitedactions[action]);
-		else
-			printf(" %s ", Actions[action]);
+		printf("\t\t[A]        \b\b\b\b\b\b\b");
+		printf(" %s", Actions[action]);
 		printf(" Theme .\t[B] Return to Theme Menu .\n");
 		printf("\t\t[Home] Return to System Menu .\n");
 		
@@ -1116,26 +1112,13 @@ void theme_manage_menu() {
 		}
 		if(buttons == BUTTON_A) break;
 		if(buttons == BUTTON_HOME) sys_loadmenu();
-		if(buttons == BUTTON_LEFT) {
-			action -= 1;
-			if(official_theme == 1) {
-				if(action < 0) action = 1;
-			}
-			else 
-				if(action < 0) action = 2;
-		}
-		if(buttons == BUTTON_RIGHT) {
-			action += 1;
-			if(official_theme == 1) {
-				if(action > 1) action = 0;
-			}
-			else
-			if(action > 2) action = 0;
+		if((buttons == BUTTON_LEFT) || (buttons == BUTTON_RIGHT)) {
+			action ^= 1;
 		}
 	}
 	con_clear();
 	
-	if((action == 2) || ((action == 1) && (official_theme == 1))) {
+	if(action == 1) {
 		
 		for(;;) {
 			con_clear();
@@ -1164,7 +1147,8 @@ void theme_manage_menu() {
 		return;
 	}
 	if(official_theme == 0) {
-		warnunsignedtheme();
+		int ret = warnunsignedtheme();
+		if(ret) return;
 	}
 	if(!priiloader) {
 		nopriiloadermessage();
@@ -1187,8 +1171,9 @@ void theme_manage_menu() {
 	//printf("cur .version(%d) .region(%c) \n", currenttheme.version, currenttheme.region);
 	//printf("inst .version(%d) .region(%c) \n", themefile[selected].version, themefile[selected].region);
 	if(action == 0) sprintf(filepath, "%s:/%s/%s", device_Name(fatdevicemounted), themedir, themefile[selected].name);
-	else if(action == 1) sprintf(filepath, "%s:/%s/%s", device_Name(fatdevicemounted), themedir, getsavenameid(systemmenuVersion));
+	//else if(action == 1) sprintf(filepath, "%s:/%s/%s", device_Name(fatdevicemounted), themedir, getsavenameid(systemmenuVersion));
 	//printf("path [%s]\n", filepath);
+	/*
 	if(action == 1) {
 		if(!Fat_CheckFile(filepath)) {
 			success = downloadApp();
@@ -1203,14 +1188,14 @@ void theme_manage_menu() {
 		themefile[selected].region = installregion(themefile[selected].version);
 		con_clear();
 		printf("Installing %s - Original System Menu Theme ..... \n\n", themefile[selected].name);
-	}
+	}*/
 	if(currenttheme.version != themefile[selected].version) { 
-        printf("\n\nInstall can not continue !\nThe install theme version is not a match\nfor the system menu version .\n\nPlease press any button to retutn to Selection Menu !\n");
+        printf("\n\nInstall can not continue !\nThe install theme version is not a match\nfor the system menu version .\n\nPlease press any button to return to Selection Menu !\n");
 		wpad_waitbuttons();
 		return;
 	}
 	if(currenttheme.region != themefile[selected].region) {
-		printf("\n\nInstall can not continue !\nThe install theme region is not a match\nfor the system menu region .\n\nPlease press any button to retutn to Selection Menu !\n");
+		printf("\n\nInstall can not continue !\nThe install theme region is not a match\nfor the system menu region .\n\nPlease press any button to return to Selection Menu !\n");
 		wpad_waitbuttons();
 		return;
 	}
@@ -1224,7 +1209,7 @@ void theme_manage_menu() {
 	fclose(tmpfile);
 	
 	if(action == 0) printf("\nInstalling %s ..... Complete .\n\n", themefile[selected].name);
-	else if(action == 1) printf("\nInstalling %s - Original System Menu Theme .... Complete .\n\n", themefile[selected].name);
+	//else if(action == 1) printf("\nInstalling %s - Original System Menu Theme .... Complete .\n\n", themefile[selected].name);
 	printf("Press any button to exit to System Menu . \n");
 	wpad_waitbuttons();
 	sys_loadmenu();
@@ -1242,7 +1227,7 @@ void theme_list_menu() {
 	
 	for(;;) {
 		con_clear();
-		printf("\n  Current IOS : %d r%d						 System Menu : %s %s\n", IOS_GetVersion(), IOS_GetRevision(), getsysvernum(systemmenuVersion), getregion(systemmenuVersion));
+		printf("\n  Current IOS : %d v%d						 System Menu : %s %s\n", IOS_GetVersion(), IOS_GetRevision(), getsysvernum(systemmenuVersion), getregion(systemmenuVersion));
 		printf("\t\t[ %d ] Theme files . Select a Theme :\n\n", (filecnt <= 0 ? 0 : filecnt));
 		if(filecnt <= 0) {
 			printf("\t\t[-] No Files Found .\n");
@@ -1262,7 +1247,7 @@ void theme_list_menu() {
             printf(" %s \n", themefile[cnt].name);
         }
 		printf("\n");
-		printf("\t\t[Up]/[Down]/[Left]/[Right] Navagate Menu .\n");
+		printf("\t\t[Up]/[Down]/[Left]/[Right] Navigate Menu .\n");
 		printf("\t\t[A] Select Theme .  [B] Select Device Menu .\n");
 		printf("\t\t[Minus-] Reload Ios .\n");
 		printf("\t\t[Plus+] Download/Install Original Theme .\n");
@@ -1345,11 +1330,12 @@ void theme_list_menu() {
 			}	
 			InstallFile(tmpfile);
 			fclose(tmpfile);
-			printf("\nInstalling %s - Original System Menu Theme .... Complete .\n\n", themefile[selected].name);
+			printf("\nInstalling %s.\n", themefile[selected].name);
+			printf("Original System Menu Theme .... Complete .\n\n");
 			printf("Press any button to exit to System Menu . \n");
 			buttons = wpad_waitbuttons();
-			filecnt = 0, start = 0, selected = 0;
-			filecnt = filelist_retrieve();
+			//filecnt = 0, start = 0, selected = 0;
+			//filecnt = filelist_retrieve();
 			sys_loadmenu();
 		}
 		if (selected <= -1)
@@ -1403,7 +1389,7 @@ void menu_loop() {
 	}
 	
 	con_clear();
-	printf("  Current IOS : %d r%d						 System Menu : %s %s\n\n", IOS_GetVersion(), IOS_GetRevision(), getsysvernum(systemmenuVersion), getregion(systemmenuVersion));
+	printf("  Current IOS : %d v%d						 System Menu : %s %s\n\n", IOS_GetVersion(), IOS_GetRevision(), getsysvernum(systemmenuVersion), getregion(systemmenuVersion));
 	printf("\t\t[*] Welcome to MyMenuifyMod!\n\n\t\tBuilt for all System menu versions 4.0 - 4.3!\n\n");
 	sleep(2);
 	

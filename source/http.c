@@ -165,7 +165,7 @@ bool tcp_read (const s32 s, u8 **buffer, const u32 length, bool print) {
 	while (left) {
 		if(print) {
 		con_clearline();
-		printf("%i percent to download .", length/received);
+		printf("Downloaded %u / %u bytes .", received, length);
 		fflush(stdout);
 		}
 		if (ticks_to_millisecs (diff_ticks (t, gettime ())) >
@@ -202,7 +202,7 @@ bool tcp_read (const s32 s, u8 **buffer, const u32 length, bool print) {
 	if(print) {
 		if(left == 0) {
 			con_clearline();
-			printf("%i percent to download .", 0);
+			printf("Downloaded %u / %u bytes .", received, length);
 			fflush(stdout);
 		}
 	}

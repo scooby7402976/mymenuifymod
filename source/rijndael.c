@@ -344,7 +344,7 @@ void aes_decrypt(u8 *iv, u8 *inbuf, u8 *outbuf, unsigned long long len) {
   u8 block[16];
   unsigned int blockno = 0, i;
 
-  logfile("aes_decrypt(%p, %p, %p, %lld)\n", iv, inbuf, outbuf, len);
+  //logfile("aes_decrypt(%p, %p, %p, %lld)\n", iv, inbuf, outbuf, len);
 
   for (blockno = 0; blockno <= (len / sizeof(block)); blockno++) {
     unsigned int fraction;
