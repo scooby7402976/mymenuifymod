@@ -28,8 +28,9 @@
 #include <fcntl.h>
 
 #include "http.h"
-#include "manager.h"
+#include "IPLFontWrite.h"
 #include "video.h"
+#include "fat_debug.h"
 
 #define TCP_CONNECT_TIMEOUT 10000
 #define TCP_BLOCK_SIZE (16 * 1024)
@@ -45,6 +46,7 @@ http_res result;
 u32 http_status;
 u32 content_length;
 u8 *http_data;
+char textbuffer[2048] = "";
 
 s32 tcp_socket (void) {
 	s32 s, res;
@@ -152,10 +154,7 @@ bool tcp_read (const s32 s, u8 **buffer, const u32 length, bool print) {
 	u32 step, left, block, received;
 	s64 t;
 	s32 res;
-	if(print) {
-	printf("\n");
-	fflush(stdout);
-	}
+	
 	step = 0;
 	p = *buffer;
 	left = length;
@@ -164,9 +163,10 @@ bool tcp_read (const s32 s, u8 **buffer, const u32 length, bool print) {
 	t = gettime ();
 	while (left) {
 		if(print) {
-		con_clearline();
-		printf("Downloaded %u / %u bytes .", received, length);
-		fflush(stdout);
+			DrawFrameStart();
+			sprintf(textbuffer, "Downloaded %u / %u bytes .", received, length);
+			WriteCentre(125, textbuffer);
+			DrawFrameFinish();
 		}
 		if (ticks_to_millisecs (diff_ticks (t, gettime ())) >
 				TCP_BLOCK_RECV_TIMEOUT) {
@@ -186,7 +186,7 @@ bool tcp_read (const s32 s, u8 **buffer, const u32 length, bool print) {
 			continue;
 		}
 		if (res < 0) {
-			printf("net_read failed: %d\n", res);
+			logfile("net_read failed: %d\n", res);
 		//	logfile("res(%d) \n",res);
 			break;
 		}
@@ -201,12 +201,13 @@ bool tcp_read (const s32 s, u8 **buffer, const u32 length, bool print) {
 	}
 	if(print) {
 		if(left == 0) {
-			con_clearline();
-			printf("Downloaded %u / %u bytes .", received, length);
-			fflush(stdout);
+			DrawFrameStart();
+			sprintf(textbuffer, "Downloaded %u / %u bytes .", received, length);
+			WriteCentre(125, textbuffer);
+			DrawFrameFinish();
 		}
 	}
-	return left == 0;
+	return left;
 }
 bool tcp_write (const s32 s, const u8 *buffer, const u32 length) {
 	const u8 *p;
@@ -222,7 +223,7 @@ bool tcp_write (const s32 s, const u8 *buffer, const u32 length) {
 	while (left) {
 		if (ticks_to_millisecs (diff_ticks (t, gettime ())) >
 				TCP_BLOCK_SEND_TIMEOUT) {
-			printf("tcp_write timeout\n");
+			//printf("tcp_write timeout\n");
 			break;
 		}
 		block = left;
@@ -234,7 +235,7 @@ bool tcp_write (const s32 s, const u8 *buffer, const u32 length) {
 			continue;
 		}
 		if (res < 0) {
-			printf("net_write failed: %d\n", res);
+			//printf("net_write failed: %d\n", res);
 			break;
 		}
 		sent += res;

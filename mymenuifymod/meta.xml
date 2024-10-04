@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <app version="1">
 	<name>MyMenuifyMod</name>
-	<version>2.0</version>
+	<version>3.0</version>
 	<coder>Scooby74029</coder>
-	<short_description>(Un)Install Themes</short_description>
-	<long_description>Press the "A" button to install/delete .csm or .app files .
-Press Plus+ button to download the app file for the currently installed system menu
-or use the .app file if found .</long_description>
+	<short_description>Theme Installer</short_description>
+	<long_description>A Theme Installer for Wii and vWii .</long_description>
 <ahb_access/>
+<disclaimer=0/>
+<wDance=0/>
 </app>
 
