@@ -151,7 +151,6 @@ void show_banner(void) {
     PNGU_ReleaseImageContext(ctx);
 	return;
 }
-
 void free_Png() {
 	pngu_free_info(ctx);
 	return;
@@ -224,7 +223,6 @@ void show_W_Dance(const void *input_Png) {
     PNGU_ReleaseImageContext(ctx);
 	return;
 }
-
 void W_Dance(int dancetimes) {
 	extern const uint8_t w1_png[];
 	extern const uint8_t w2_png[];
@@ -255,7 +253,6 @@ void W_Dance(int dancetimes) {
 	
 	return;
 }
-
 void read_MMM_Config(int device) {
 	int unmounted;
 	char filepath[2048];
@@ -577,7 +574,6 @@ u32 checkcustomsystemmenuversion() {
 	}
 	return 0;
 }
-
 void draw_System_Info(s32 ios) {
 	sprintf(textbuf, "IOS: %i_v%i     System Menu: %s_%s", ios, IOS_GetRevision(), getsysvernum(systemmenuVersion), getregion(systemmenuVersion));
 	DrawFrameStart();
@@ -1156,7 +1152,6 @@ int theme_device_menu() {
 	
 	return fatdevicemounted;
 }
-
 int theme_entrycmp(const void *p1, const void *p2) {
 	Fatfile *f1 = (Fatfile *)p1;
 	Fatfile *f2 = (Fatfile *)p2;
@@ -1233,7 +1228,6 @@ u32 filesize(FILE *file) {
 	
 	return endpos;
 }
-
 u32 verify_content_file_Version(char * name) { 
 	char filepath[256];
     FILE *fp = NULL;
@@ -1473,7 +1467,6 @@ bool warnunsignedtheme() {
 	}
 	return false;
 }
-
 void nopriiloadermessage() {
 	u32 buttons;
 	s32 Ios = IOS_GetVersion();
@@ -1779,7 +1772,6 @@ s32 InstallFile(FILE * fp) {
 	ISFS_Close(nandfile);
 	return 0;
 }
-
 void theme_manage_menu() {
 	if(Debugger) logfile("Selected theme :  %s\n", themefile[selected].name);
 	f32 sizeoffile;
