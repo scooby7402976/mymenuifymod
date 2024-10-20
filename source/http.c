@@ -171,7 +171,7 @@ bool tcp_read (const s32 s, u8 **buffer, const u32 length, bool print) {
 		if (ticks_to_millisecs (diff_ticks (t, gettime ())) >
 				TCP_BLOCK_RECV_TIMEOUT) {
 			//logfile("tcp_read timeout\n");
-			printf("tcp_read timeout\n");
+			//printf("tcp_read timeout\n");
 			break;
 		}
 		block = left;
@@ -186,7 +186,7 @@ bool tcp_read (const s32 s, u8 **buffer, const u32 length, bool print) {
 			continue;
 		}
 		if (res < 0) {
-			logfile("net_read failed: %d\n", res);
+		//	logfile("net_read failed: %d\n", res);
 		//	logfile("res(%d) \n",res);
 			break;
 		}
@@ -200,13 +200,15 @@ bool tcp_read (const s32 s, u8 **buffer, const u32 length, bool print) {
 		//logfile("step (%d) received (%d) left(%d)\n", step, received,left);
 	}
 	if(print) {
-		if(left == 0) {
+		 {
 			DrawFrameStart();
 			sprintf(textbuffer, "Downloaded %u / %u bytes .", received, length);
 			WriteCentre(125, textbuffer);
 			DrawFrameFinish();
+			left = -1;
 		}
 	}
+	if(left == 0) left = -1;
 	return left;
 }
 bool tcp_write (const s32 s, const u8 *buffer, const u32 length) {
@@ -309,7 +311,8 @@ bool http_request (const char *url, const u32 max_size, bool print) {
 		free (line);
 		line = NULL;
 	}
-	//logfile("content_length = %d, status = %d, linecount = %d\n", content_length, http_status, linecount);
+	//if(Debugger) 
+	logfile("content_length = %d, status = %d, linecount = %d\n", content_length, http_status, linecount);
 	if (linecount == 32 || !content_length) http_status = 404;
 	if (http_status != 200) {
 		result = HTTPR_ERR_STATUS;
@@ -317,7 +320,7 @@ bool http_request (const char *url, const u32 max_size, bool print) {
 		return false;
 	}
 	if (content_length > http_max_size) {
-	//	logfile("here is prob \n");
+		logfile("here is prob \n");
 	//	logfile("clen(%d) httpmsize(%d) \n",content_length,http_max_size);
 		result = HTTPR_ERR_TOOBIG;
 		net_close (s);
@@ -331,6 +334,7 @@ bool http_request (const char *url, const u32 max_size, bool print) {
 		http_data = NULL;
 		result = HTTPR_ERR_RECEIVE;
 		net_close (s);
+		logfile("return false \n");
 		return false;
 	}
 	//logfile("leaving request \n");
