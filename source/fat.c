@@ -10,8 +10,8 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "fat2.h"
-#include "fat_debug.h"
+#include "fat.h"
+#include "sddebug.h"
 
 const DISC_INTERFACE *interface;
 const char *fat_device;

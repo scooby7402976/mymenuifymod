@@ -28,9 +28,9 @@
 #include <fcntl.h>
 
 #include "http.h"
+#include "main.h"
 #include "IPLFontWrite.h"
-#include "video.h"
-#include "fat_debug.h"
+
 
 #define TCP_CONNECT_TIMEOUT 10000
 #define TCP_BLOCK_SIZE (16 * 1024)
@@ -46,25 +46,25 @@ http_res result;
 u32 http_status;
 u32 content_length;
 u8 *http_data;
-char textbuffer[2048] = "";
+char txtbuf[256] = "";
 
 s32 tcp_socket (void) {
 	s32 s, res;
 
 	s = net_socket (PF_INET, SOCK_STREAM, 0);
 	if (s < 0) {
-		printf("net_socket failed: %d\n", s);
+		//logfile("net_socket failed: %d\n", s);
 		return s;
 	}
 	res = net_fcntl (s, F_GETFL, 0);
 	if (res < 0) {
-		printf("F_GETFL failed: %d\n", res);
+		//printf("F_GETFL failed: %d\n", res);
 		net_close (s);
 		return res;
 	}
 	res = net_fcntl (s, F_SETFL, res | 4);
 	if (res < 0) {
-		printf("F_SETFL failed: %d\n", res);
+		//printf("F_SETFL failed: %d\n", res);
 		net_close (s);
 		return res;
 	}
@@ -78,7 +78,7 @@ s32 tcp_connect (char *host, const u16 port) {
 
 	hp = net_gethostbyname (host);
 	if (!hp || !(hp->h_addrtype == PF_INET)) {
-		printf("net_gethostbyname failed: %d\n", errno);
+		//printf("net_gethostbyname failed: %d\n", errno);
 		return errno;
 	}
 	s = tcp_socket ();
@@ -93,7 +93,7 @@ s32 tcp_connect (char *host, const u16 port) {
 	while (true) {
 		if (ticks_to_millisecs (diff_ticks (t, gettime ())) >
 				TCP_CONNECT_TIMEOUT) {
-			printf("tcp_connect timeout\n");
+			//printf("tcp_connect timeout\n");
 			net_close (s);
 			return -ETIMEDOUT;
 		}
@@ -105,7 +105,7 @@ s32 tcp_connect (char *host, const u16 port) {
 				usleep (20 * 1000);
 				continue;
 			}
-			printf("net_connect failed: %d\n", res);
+			//printf("net_connect failed: %d\n", res);
 			net_close (s);
 			return res;
 		}
@@ -131,7 +131,7 @@ char * tcp_readln (const s32 s, const u16 max_length, const s64 start_time, cons
 			continue;
 		}
 		if (res < 0) {
-			printf("tcp_readln failed: %d\n", res);
+			//printf("tcp_readln failed: %d\n", res);
 			break;
 		}
 		if ((c > 0) && (buf[c - 1] == '\r') && (buf[c] == '\n')) {
@@ -154,7 +154,6 @@ bool tcp_read (const s32 s, u8 **buffer, const u32 length, bool print) {
 	u32 step, left, block, received;
 	s64 t;
 	s32 res;
-	
 	step = 0;
 	p = *buffer;
 	left = length;
@@ -163,10 +162,10 @@ bool tcp_read (const s32 s, u8 **buffer, const u32 length, bool print) {
 	t = gettime ();
 	while (left) {
 		if(print) {
-			DrawFrameStart();
-			sprintf(textbuffer, "Downloaded %u / %u bytes .", received, length);
-			WriteCentre(125, textbuffer);
-			DrawFrameFinish();
+		
+		sprintf(txtbuf, "Downloaded %u / %u bytes .", received, length);
+		WriteFont(50, 300, txtbuf);;
+		DrawFrameFinish();
 		}
 		if (ticks_to_millisecs (diff_ticks (t, gettime ())) >
 				TCP_BLOCK_RECV_TIMEOUT) {
@@ -186,7 +185,7 @@ bool tcp_read (const s32 s, u8 **buffer, const u32 length, bool print) {
 			continue;
 		}
 		if (res < 0) {
-		//	logfile("net_read failed: %d\n", res);
+			//printf("net_read failed: %d\n", res);
 		//	logfile("res(%d) \n",res);
 			break;
 		}
@@ -200,16 +199,13 @@ bool tcp_read (const s32 s, u8 **buffer, const u32 length, bool print) {
 		//logfile("step (%d) received (%d) left(%d)\n", step, received,left);
 	}
 	if(print) {
-		 {
-			DrawFrameStart();
-			sprintf(textbuffer, "Downloaded %u / %u bytes .", received, length);
-			WriteCentre(125, textbuffer);
+		if(left == 0) {
+			sprintf(txtbuf, "Downloaded %u / %u bytes .", received, length);
+			WriteFont(50, 300, txtbuf);
 			DrawFrameFinish();
-			left = -1;
 		}
 	}
-	if(left == 0) left = -1;
-	return left;
+	return left == 0;
 }
 bool tcp_write (const s32 s, const u8 *buffer, const u32 length) {
 	const u8 *p;
@@ -311,8 +307,7 @@ bool http_request (const char *url, const u32 max_size, bool print) {
 		free (line);
 		line = NULL;
 	}
-	//if(Debugger) 
-	logfile("content_length = %d, status = %d, linecount = %d\n", content_length, http_status, linecount);
+	//logfile("content_length = %d, status = %d, linecount = %d\n", content_length, http_status, linecount);
 	if (linecount == 32 || !content_length) http_status = 404;
 	if (http_status != 200) {
 		result = HTTPR_ERR_STATUS;
@@ -320,7 +315,7 @@ bool http_request (const char *url, const u32 max_size, bool print) {
 		return false;
 	}
 	if (content_length > http_max_size) {
-		logfile("here is prob \n");
+	//	logfile("here is prob \n");
 	//	logfile("clen(%d) httpmsize(%d) \n",content_length,http_max_size);
 		result = HTTPR_ERR_TOOBIG;
 		net_close (s);
@@ -334,7 +329,6 @@ bool http_request (const char *url, const u32 max_size, bool print) {
 		http_data = NULL;
 		result = HTTPR_ERR_RECEIVE;
 		net_close (s);
-		logfile("return false \n");
 		return false;
 	}
 	//logfile("leaving request \n");

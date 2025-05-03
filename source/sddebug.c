@@ -5,7 +5,7 @@
 #include <string.h>
 #include <malloc.h>
 #include <sys/dir.h>
-#include "fat_debug.h"
+#include "sddebug.h"
 
 const char *device_Name(int input_pos) {
 	

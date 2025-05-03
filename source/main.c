@@ -7,54 +7,45 @@
 #include <sys/dir.h>
 #include <network.h>
 #include <ogc/ios.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <gctypes.h>
+#include <ogc/es.h>
+#include <ogc/ipc.h>
+#include <ogc/isfs.h>
 
-#include "debug.h"
 #include "wpad.h"
 #include "IPLFontWrite.h"
 #include "video.h"
-#include "fat_debug.h"
-#include "fat2.h"
+#include "sddebug.h"
+#include "fat.h"
 #include "libpng/pngu/pngu.h"
-#include "grfx/mymenuifymod_png.h"
 #include "iospatch.h"
 #include "http.h"
 #include "rijndael.h"
 #include "network.h"
-#include "gecko.h"
 
 #define KNOWN_THEME_CONTENTS   18
-
-#define HBC_HAXX    0x0001000148415858LL
-#define HBC_JODI    0x000100014A4F4449LL
-#define HBC_1_0_7   0x00010001AF1BF516LL
-#define HBC_1_0_8   0x00010001af1bf516LL 
-#define HBC_LULZ    0x000100014C554C5ALL
-#define Priiloader  0x0000000100000002LL
-
-#define MAX_FILELIST_LEN	1024
-#define MAX_FILEPATH_LEN	256
-
-#define MB_SIZE		        1048576.0
-#define FILES_PER_PAGE		5
-
-#define BLOCK_SIZE	0x1000
-#define CHUNKS 1000000
-#define MAX_SIZE_HTTP 0xFFFFFFFF
-
+#define MB_SIZE		           1048576.0
+#define FILES_PER_PAGE		   5
+#define BLOCK_SIZE	           0x1000
+#define CHUNKS                 1000000
+#define MAX_SIZE_HTTP          0xFFFFFFFF
+#define MAGIC_WORD_ADDRESS     0x8132FFFB
+#define MAGIC_WORD_ADDRESS2    0x817FEFF0 //0x8132FFFB
 
 IMGCTX ctx;
 int fatdevicemounted = 0;
-bool Debugger;
+bool Debugger = false;
 GXRModeObj *vmode = NULL;
 u32 *xfb[2] = { NULL, NULL };
 int whichfb = 0;
-u32 systemmenuVersion;
+u32 system_version;
+char textbuf[256] = "";
+bool system_is_vWii = false;
 const char *themedir = "themes";
 static s32 filecnt = 0, start = 0, selected = 0;
-char textbuf[2048] = "";
-char textbuf2[2048] = "";
-u8 wii_common_key[16] = { 0xeb, 0xe4, 0x2a, 0x22, 0x5e, 0x85, 0x93, 0xe4, 0x48,0xd9, 0xc5, 0x45, 0x73, 0x81, 0xaa, 0xf7 };
-u8 vWii_common_key[16] = { 0x30, 0xBF, 0xC7, 0x6E, 0x7C, 0x19, 0xAF, 0xBB, 0x23, 0x16, 0x33, 0x30, 0xCE, 0xD7, 0xC2, 0x8D };
+char textbuf2[256] = "";
 typedef struct _dirent{
 	char name[ISFS_MAXPATH + 1];
 	int type;
@@ -82,18 +73,15 @@ typedef struct{
 	bool isapp;
 }Fatfile;
 bool disable_Disclaimer;
-bool disable_wDance;
 Fatfile *themefile = NULL;
 themeInfo currentTheme;
 u32 known_Versions[KNOWN_THEME_CONTENTS] = {416, 417, 418, 448, 449, 450, 454, 480, 481, 482, 486, 512, 513, 514, 518, 608, 609, 610};
 char *regions[KNOWN_THEME_CONTENTS] =      {"J", "U", "E", "J", "U", "E", "K", "J", "U", "E", "K", "J", "U", "E", "K", "J", "U", "E"};
 char *knownappfilenames[KNOWN_THEME_CONTENTS] = {"0000006f.app", "00000072.app", "00000075.app", "00000078.app", "0000007b.app", "0000007e.app", "00000081.app", "00000084.app", "00000087.app", "0000008a.app", "0000008d.app", "00000094.app", "00000097.app", "0000009a.app", "0000009d.app", "0000001c.app", "0000001f.app", "00000022.app"};
+char *known_backup_names[KNOWN_THEME_CONTENTS] = {"0000006f_bkup.app", "00000072_bkup.app", "00000075_bkup.app", "00000078_bkup.app", "0000007b_bkup.app", "0000007e_bkup.app", "00000081_bkup.app", "00000084_bkup.app", "00000087_bkup.app", "0000008a_bkup.app", "0000008d_bkup.app", "00000094_bkup.app", "00000097_bkup.app", "0000009a_bkup.app", "0000009d_bkup.app", "0000001c_bkup.app", "0000001f_bkup.app", "00000022_bkup.app"};
 static vu32 *_wiilight_reg = (u32*) 0xCD0000C0;
-const char *wiishoppath = "http://nus.cdn.shop.wii.com/ccs/download";             // Nus Wii
-const char *wiiU_shoppath = "http://ccs.cdn.wup.shop.nintendo.net/ccs/download"; // Nus Wii U
-const char *RC24path = "http://ccs.cdn.sho.rc24.xyz/ccs/download";                // Nus Emu RC24
 bool priiloader_found = false;
-//bool isvWii;
+
 void pngu_free_info(IMGCTX ctx);
 extern void __exception_setreload(int);
 void sleep(int);
@@ -104,7 +92,11 @@ char *theme_ID[] = { "AMONG1",
 "ANML02",
 "APPLE1",
 "ATHF01",
+"AODRK1",
+"ARSNFC",
+"FALCON",
 "BKGN01",
+"BRCLNA",
 "BTMN01",
 "BTMN02",
 "BIGG01",
@@ -112,23 +104,36 @@ char *theme_ID[] = { "AMONG1",
 "BLKGD1",
 "BLMG01",
 "BLPR01",
+"BLPR02",
 "BLCH01",
+"BWBETA",
 "BOBO01",
 "BDSTS1",
+"BSTRD1",
 "BWSR01",
 "BRLY01",
+"BILLS1",
 "CODTY1",
 "CAR001",
+"PNTHR1",
 "CARS01",
+"CSTLV1",
+"CELTIC",
+"CHNSAW",
 "CKMO01",
+"BEARS1",
+"HAWKS1",
+"BULLS1",
 "CRTRG1",
 "CLKWK1",
 "CLBPN1",
 "GEASS1",
 "CONDT1",
 "CONST1",
+"CWBYS1",
 "DKUB01",
 "DKUB02",
+"DKWI+1",
 "DWORI1",
 "DWBLU1",
 "DWBLE1",
@@ -153,6 +158,7 @@ char *theme_ID[] = { "AMONG1",
 "DWRDU1",
 "DWRDE1",
 "DWRDJ1",
+"DWRDK1",
 "DWWHU1",
 "DWWHE1",
 "DWWHJ1",
@@ -161,13 +167,17 @@ char *theme_ID[] = { "AMONG1",
 "DWYLE1",
 "DWYLJ1",
 "DWYLK1",
+"DNOTE1",
 "DKLOK1",
+"LIONS1",
 "DIABL1",
 "DSCRD1",
 "DGMN01",
+"DOLPH1",
 "DBLZ01",
 "DBLZ02",
 "DRWHO1",
+"DUKES1",
 "DGENX1",
 "EGLES1",
 "ETHBD1",
@@ -201,17 +211,20 @@ char *theme_ID[] = { "AMONG1",
 "GSUN01",
 "GOTH01",
 "GRTFL1",
+"PCKRS1",
 "HDRAW1",
 "HKITY1",
 "HELLK1",
 "HEMAN1",
 "HEROS1",
 "HNDRD1",
-"INBET1",
 "ILLOG1",
 "IMPOR1",
+"INBET1",
+"COLTS1",
 "ICP001",
 "IMMAR1",
+"JNSBOB",
 "JSRAD1",
 "JNUTR1",
 "JOKER1",
@@ -228,9 +241,11 @@ char *theme_ID[] = { "AMONG1",
 "LOST01",
 "LUIGI1",
 "LUIGI2",
+"MNMS01",
 "MWRLD1",
 "MWRLD2",
 "MAMSK1",
+"UNITED",
 "MNHNT1",
 "MARIA1",
 "MARIO2",
@@ -243,18 +258,31 @@ char *theme_ID[] = { "AMONG1",
 "MGSOL1",
 "MTLCA1",
 "MTROD1",
+"METPR1",
 "MTDSV1",
+"METS01",
 "MISTF1",
-"MNMS01",
+"MODMII",
+"MONKEY",
+"MONOW1",
+"CANAD1",
 "MKOMB1",
 "MUSE01",
 "NARTO1",
+"SAINT1",
+"NEPAT1",
+"RANGR1",
+"YANKE1",
 "NMB4X1",
 "NIDRM1",
+"NRVNA1",
 "NOMRH1",
+"RAIDR1",
+"OASIS1",
 "OKAMI1",
 "OSNIN1",
 "OTLWS1",
+"OZZY01",
 "PLJAM1",
 "POMAD1",
 "PHWRT1",
@@ -262,6 +290,8 @@ char *theme_ID[] = { "AMONG1",
 "PKFLD1",
 "PNKWI1",
 "PRSKL1",
+"PENGUN",
+"STELR1",
 "PIZTR1",
 "PREDR1",
 "PARIE1",
@@ -274,16 +304,21 @@ char *theme_ID[] = { "AMONG1",
 "RCLNK1",
 "RC2402",
 "RC2401",
+"RESEVE",
+"RMYST1",
 "RHYTH1",
 "RMORT1",
 "RCHCK1",
 "RBAND1",
+"RBLOD1",
 "SAW001",
 "SCRFC1",
 "SECOM1",
 "SEINF1",
 "SENDO1",
 "SHADH1",
+"SHANA1",
+"SHNDWN",
 "SILVH1",
 "SMASH1",
 "SMOKE1",
@@ -294,6 +329,7 @@ char *theme_ID[] = { "AMONG1",
 "SONOA1",
 "STHPK1",
 "SPAWN1",
+"SPICE1",
 "SPDMN1",
 "SPONG1",
 "SQUBL1",
@@ -322,6 +358,7 @@ char *theme_ID[] = { "AMONG1",
 "TCATS1",
 "TMNT01",
 "TRAID1",
+"LEAFS1",
 "TOTDR1",
 "TTOON1",
 "TOYST1",
@@ -331,10 +368,12 @@ char *theme_ID[] = { "AMONG1",
 "TRPTL1",
 "TBLOD1",
 "UDWII1",
+"CANUCK",
 "VEGET1",
 "VISTA1",
 "WALEY1",
 "WARIO1",
+"CAPTLS",
 "WSTRI1",
 "WHITE1",
 "WIID01",
@@ -343,13 +382,17 @@ char *theme_ID[] = { "AMONG1",
 "WIIPT2",
 "WSPOR1",
 "WIIU01",
+"WIN701",
 "WINXP1",
 "WOLVE1",
 "WWERW1",
 "XBOX01",
+"GYOSHI",
 "YUGIO1",
 "ZELDA1",
 "ZELDA2",
+"ZELDA3",
+"ZELDA4",
 "ZOMB01"
 };
 char *theme_Name[] = { "Among Us v1",
@@ -358,7 +401,11 @@ char *theme_Name[] = { "Among Us v1",
 "Animal Crossing v2",
 "Apple",
 "Aqua Teen Hunger Force",
+"Army of Darkness",
+"Arsenal FC",
+"Atlanta Falcons",
 "Bakugan",
+"FC Barcelona",
 "Batman v1",
 "Batman v2",
 "Notorious B.I.G.",
@@ -366,62 +413,80 @@ char *theme_Name[] = { "Among Us v1",
 "Black Gold",
 "Black Mage",
 "Black Pirate",
+"Black Pirate v2",
 "Bleach",
+"Blue Wii Beta",
 "BoBoBo",
 "Boondock Saints",
+"Boston Red Socks",
 "Bowser",
 "Broly",
+"Buffalo Bills",
 "Call of Duty",
 "Car",
+"Carolina Panthers",
 "Cars",
+"Castlevania",
+"Celtic FC",
+"Chainsaw Man",
 "Check Mii Out",
+"Chicago Bears",
+"Chicago Black Hawks",
+"Chicago Bulls",
 "Chrono Trigger",
 "Clock Work Orange",
 "Club Penguin",
 "Code Geass",
 "Conduit",
 "Constantine",
+"Dallas Cowboys",
 "Dark Umbra v1",
 "Dark Umbra v2",
+"Dark Wii Plus",
 "Dark Wii Original",
-"Dark Wii Blue",
-"Dark Wii Blue",
-"Dark Wii Blue",
-"Dark Wii Blue",
-"Dark Wii Green",
-"Dark Wii Green",
-"Dark Wii Green",
-"Dark Wii Green",
-"Dark Wii Orange",
-"Dark Wii Orange",
-"Dark Wii Orange",
-"Dark Wii Orange",
-"Dark Wii Pink",
-"Dark Wii Pink",
-"Dark Wii Pink",
-"Dark Wii Pink",
-"Dark Wii Purple",
-"Dark Wii Purple",
-"Dark Wii Purple",
-"Dark Wii Purple",
-"Dark Wii Red",
-"Dark Wii Red",
-"Dark Wii Red",
-"Dark Wii White",
-"Dark Wii White",
-"Dark Wii White",
-"Dark Wii White",
-"Dark Wii Yellow",
-"Dark Wii Yellow",
-"Dark Wii Yellow",
-"Dark Wii Yellow",
+"Dark Wii Blue U",
+"Dark Wii Blue E",
+"Dark Wii Blue J",
+"Dark Wii Blue K",
+"Dark Wii Green U",
+"Dark Wii Green E",
+"Dark Wii Green J",
+"Dark Wii Green K",
+"Dark Wii Orange U",
+"Dark Wii Orange E",
+"Dark Wii Orange J",
+"Dark Wii Orange K",
+"Dark Wii Pink U",
+"Dark Wii Pink E",
+"Dark Wii Pink J",
+"Dark Wii Pink K",
+"Dark Wii Purple U",
+"Dark Wii Purple E",
+"Dark Wii Purple J",
+"Dark Wii Purple K",
+"Dark Wii Red U",
+"Dark Wii Red E",
+"Dark Wii Red J",
+"Dark Wii Red K",
+"Dark Wii White U",
+"Dark Wii White E",
+"Dark Wii White J",
+"Dark Wii White K",
+"Dark Wii Yellow U",
+"Dark Wii Yellow E",
+"Dark Wii Yellow J",
+"Dark Wii Yellow K",
+"Death Note",
 "Deth Klok",
+"Detroit Lions",
 "Diablo 3",
 "Discord",
 "Dog Man",
+"Dolphins",
 "Dragon Ball Z v1",
 "Dragon Ball Z v2",
 "Dr Who",
+"Dukes of Hazzard",
 "De-Generation X",
 "Eagles",
 "Earth Bound",
@@ -443,10 +508,10 @@ char *theme_Name[] = { "Among Us v1",
 "Flower Power",
 "Friday Night Funkin",
 "Friday the 13th",
-"Full Metal Alchemist",
-"Full Metal Alchemist",
-"Full Metal Alchemist",
-"Full Metal Alchemist",
+"Full Metal Alchemist U",
+"Full Metal Alchemist E",
+"Full Metal Alchemist J",
+"Full Metal Alchemist K",
 "Futurama",
 "Gaara",
 "Garfield",
@@ -455,17 +520,20 @@ char *theme_Name[] = { "Among Us v1",
 "Golden Sun",
 "Gothic",
 "Grateful Dead",
+"Green Bay Packers",
 "Hand Drawn",
 "Hello Kitty",
 "Hell's Kitchen",
 "He-Man",
 "Heros",
 "The Hundreds",
-"In Betweeners",
 "Illusions of Gaia",
 "Imports",
+"In Betweeners",
+"Indianapolis Colts",
 "Insane Clown Posse",
 "Its A Me Mario",
+"Jay & Silent Bob",
 "Jet Set Radio",
 "Jimmy Neutron",
 "Joker",
@@ -482,9 +550,11 @@ char *theme_Name[] = { "Among Us v1",
 "Lost",
 "Luigi v1",
 "Luigi v2",
+"M & M's",
 "Mad World",
 "Mad World v2",
 "Majoras Mask",
+"Manchester United",
 "Man Hunt",
 "Maria",
 "Mario",
@@ -497,18 +567,31 @@ char *theme_Name[] = { "Among Us v1",
 "Metal Gear Solid",
 "Metallica",
 "Metroid",
+"Metroid Prime",
 "Metroid: Samus's Visor",
+"Mets",
 "Mist Forest",
-"M and M's",
+"ModMii",
+"Monkeys",
+"Monopol - Wii",
+"Montreal Canadians",
 "Mortal Kombat",
 "Muse",
 "Naruto",
+"New Orleans Saints",
+"New England Patriots",
+"New York Rangers",
+"New York Yankees",
 "Nightmare B4 Xmas",
 "Nights into Dreams",
+"Nirvana",
 "No More Heros",
+"Oakland Raiders",
+"Oasis",
 "Okami",
 "Old School Nintendo",
 "Outlaw Star",
+"Ozzy",
 "Pearl Jam",
 "Penguins of Madagascar",
 "Phoenix Wright",
@@ -516,6 +599,8 @@ char *theme_Name[] = { "Among Us v1",
 "Pink Floyd",
 "Pink Wii",
 "Pirate Skulls",
+"Pittsburgh Penguins",
+"Pittsburgh Steelers",
 "Pizza Tower",
 "Predator",
 "Princess Ariel v1",
@@ -528,16 +613,21 @@ char *theme_Name[] = { "Among Us v1",
 "Ratchet and Clank",
 "Reconnect 24 Blue",
 "Reconnect 24 Red",
+"Resident Evil 4",
+"Rey Mysterio",
 "Rhythm Heaven",
 "Rick and Morty",
 "Robot Chicken",
 "Rockband 2",
+"Rondo of Blood",
 "Saw",
 "ScarFace",
 "Secrets of Mana",
 "Seinfeld",
 "Sendo World",
 "Shadow The Hedgehog",
+"Shakugan no Shana",
+"ShineDown",
 "Silver The Hedgehog",
 "Smash Brothers Brawl",
 "Smokers",
@@ -548,6 +638,7 @@ char *theme_Name[] = { "Among Us v1",
 "Sons of Anarchy",
 "South Park",
 "Spawn",
+"Spice & Wolf",
 "Spiderman",
 "SpongeBob",
 "Squid Billies",
@@ -556,10 +647,10 @@ char *theme_Name[] = { "Among Us v1",
 "Star Wars",
 "Star Wars Unleashed",
 "Steel Wii",
-"Storms",
-"Storms",
-"Storms",
-"Storms",
+"Storms U",
+"Storms E",
+"Storms J",
+"Storms K",
 "Street Fighter",
 "Super Hero Squad",
 "Super Mario Brothers 3",
@@ -576,6 +667,7 @@ char *theme_Name[] = { "Among Us v1",
 "Thunder Cats",
 "Teenage Mutant Ninja Turtles",
 "Tomb Raider",
+"Toronto Maple Leafs",
 "Total Drama Action",
 "Toxic Toons",
 "Toy Story",
@@ -585,10 +677,12 @@ char *theme_Name[] = { "Among Us v1",
 "Tropical Teal",
 "True Blood",
 "Ultimate Dark Wii",
+"Vancouver Canucks",
 "Vegeta",
 "Vista",
 "Walleye",
 "Wario Ware",
+"Washington Capitals",
 "White Stripes",
 "White Wii",
 "Wiid",
@@ -597,15 +691,18 @@ char *theme_Name[] = { "Among Us v1",
 "Wii Party v2",
 "Wii Sports",
 "Wii U",
+"Windows 7",
 "Win XP OS",
 "Wolverine",
 "WWE Raw",
 "Xbox 360",
+"Yoshi",
 "Yugi-oh",
 "Zelda",
 "Zelda: A Link to the Past",
+"Zelda: Minish Cap",
+"Zelda v2",
 "ZombWii"
-
 };
 
 void wiilight(int enable) {
@@ -615,30 +712,27 @@ void wiilight(int enable) {
 }
 void system_exit_Menu(void) {
 	wiilight(1);
-	/* Return to the Wii system menu */
+	// Return to the Wii system menu
 	SYS_ResetSystem(SYS_RETURNTOMENU, 0, 0);
 }
 int system_Exit_Priiloader() {
-	WII_Initialize();
 	wiilight(1);
-	int ret = WII_LaunchTitle(Priiloader);
-	
-	if(ret < 0)
-		return ret;
+	//retarded that this is the only way without touching the settings of priiloader or load the dol...
+	//logfile("magic word is %x\n",*(vu32*)MAGIC_WORD_ADDRESS);
+	*(vu32*)MAGIC_WORD_ADDRESS = 0x4461636f; // "Daco" , causes priiloader to skip autoboot and load the priiloader menu
+	//*(vu32*)MAGIC_WORD_ADDRESS = 0x50756e65; // "Pune" , causes priiloader to skip autoboot and load Sys Menu
+	*(vu32*)MAGIC_WORD_ADDRESS2 = *(vu32*)MAGIC_WORD_ADDRESS;
+	DCFlushRange((void*)MAGIC_WORD_ADDRESS, 4);
+	DCFlushRange((void*)MAGIC_WORD_ADDRESS2, 4);
+	//logfile("magic word changed to %x\n",*(vu32*)MAGIC_WORD_ADDRESS);
+
+	SYS_ResetSystem(SYS_RETURNTOMENU,0,0);
 	wiilight(0);
 	return 0;
 }
 void system_exit_HBC() {
-	WII_Initialize();
 	wiilight(1);
-    int ret = WII_LaunchTitle(HBC_1_0_7);
-    if(ret < 0) WII_LaunchTitle(HBC_JODI);
-    if(ret < 0) WII_LaunchTitle(HBC_HAXX);
-	if(ret < 0) WII_LaunchTitle(HBC_1_0_8);
-	if(ret < 0) WII_LaunchTitle(HBC_LULZ);
-	wiilight(0);
-    //Back to system menu if all fails
-    SYS_ResetSystem(SYS_RETURNTOMENU, 0, 0);
+	exit(0);
 }
 void show_banner(void) {
     PNGUPROP imgProp;
@@ -713,146 +807,36 @@ static void Initialise() {
 	
 	return;
 }
-void show_W_Dance(const void *input_Png) {
-    PNGUPROP imgProp;
-    s32 ret;
-	
-	
-    // Select PNG data 
-    ctx = PNGU_SelectImageFromBuffer(input_Png);
-    if (!ctx)
-        return;
-
-    // Get image properties 
-    ret = PNGU_GetImageProperties(ctx, &imgProp);
-    if (ret != PNGU_OK)
-        return;
-
-    // Draw image 
-    video_drawpng(ctx, imgProp, 195, 115);
-
-     //Free image context 
-    PNGU_ReleaseImageContext(ctx);
-	return;
-}
-void W_Dance(int dancetimes) {
-	extern const uint8_t w1_png[];
-	extern const uint8_t w2_png[];
-	extern const uint8_t w3_png[];
-	extern const uint8_t w4_png[];
-	extern const uint8_t w5_png[];
-	extern const uint8_t w6_png[];
-	extern const uint8_t w7_png[];
-	extern const uint8_t w8_png[];
-	extern const uint8_t w9_png[];
-	extern const uint8_t w10_png[];
-	extern const uint8_t w11_png[];
-	extern const uint8_t w12_png[];
-	int number_of_w_pictures = 12;
-	const void *W_Danincin[] = { w1_png, w2_png, w3_png, w4_png, w5_png, w6_png, w7_png, w8_png, w9_png, w10_png, w11_png, w12_png };
-	
-	for(int y = 0; y < dancetimes; y++)
-		for(int z = 0; z < number_of_w_pictures; z++) {
-			DrawFrameStart();
-			show_W_Dance(W_Danincin[z]);
-			if(z == number_of_w_pictures - 1 && y == dancetimes - 1) {
-				DrawRawFont((320 - (strlen("MyMenuifyMod")/2)), 360, "MyMenuifyMod");
-				DrawRawFont((320 - (strlen("  WELCOME   ")/2)), 390, "  WELCOME   ");
-			}
-			DrawFrameFinish();
-			free_Png();
-		}
-	
-	return;
-}
-void read_MMM_Config(int device) {
+bool read_Settings() {
 	
 	char filepath[256];
-	FILE *meta_File;
-	char file_Line[1024];
-	char *line;
+	FILE *settings_File;
 	
-	if(Debugger) logfile("fatdevicemounted [%i]\n", fatdevicemounted);
-	sprintf(filepath, "%s:/apps/mymenuifymod/meta.xml", device_Name(fatdevicemounted));
+	sprintf(filepath, "%s:/apps/mymenuifymod/settings.txt", device_Name(fatdevicemounted));
 	if(Debugger) logfile("filepath[%s]\n", filepath);
-	meta_File = fopen(filepath, "rb");
-	while ((line = fgets(file_Line, sizeof(file_Line), meta_File))) {
-		//logfile("Line[%s]\n", line);
-		if(strstr(line, "!Disclaimer")) {
-			//logfile("found string '!Disclaimer' .\n");
-			disable_Disclaimer = true;
-		}
-		else if(strstr(line, "Disclaimer")) {
-			//logfile("found string 'Disclaimer' .\n");
-			disable_Disclaimer = false;
-		}
-		if(strstr(line, "!wDance")) {
-			//logfile("found string '!wDance' .\n");
-			disable_wDance = true;
-		}
-		else if(strstr(line, "wDance")) {
-			//logfile("found string 'wDance' .\n");
-			disable_wDance = false;
-		}
-	}
-	fclose(meta_File);
-	return;
+	settings_File = fopen(filepath, "rb");
+	if(!settings_File) return false;
+	fclose(settings_File);
+	
+	return true;
 }
-int write_MMM_Config(int device, int mode) {
-	char filepath_Meta[2048];
-	char filepath_NewMeta[2048];
-	FILE *meta_File;
-	FILE *tmpFile;
-	const char *newFile = NULL;
+bool write_Settings() {
+	char filepath[512];
+	FILE *settings_File;
+	const char *file_contents = NULL;
 	
-	read_MMM_Config(device);
+	sprintf(filepath, "%s:/apps/mymenuifymod/settings.txt", device_Name(fatdevicemounted));
+	logfile("filepath[%s]\n", filepath);
+	settings_File = fopen(filepath, "ab");
+	if(!settings_File) {
+		logfile("Unable to open file [%s:/apps/mymenuifymod/settings.txt]\n", device_Name(fatdevicemounted));
+		return false;
+	}
+	file_contents = "Disclaimer disabled";
+	fprintf(settings_File, file_contents);
+	fclose(settings_File);
 	
-	
-	sprintf(filepath_Meta, "%s:/apps/mymenuifymod/meta.xml", device_Name(device));
-	//logfile("filepath[%s]\n", filepath_Meta);
-	meta_File = fopen(filepath_Meta, "rb");
-	if(!meta_File) {
-		logfile("Unable to open file [%s:/apps/mymenuifymod/meta.xml]\n", device_Name(device));
-		return 0;
-	}
-	sprintf(filepath_NewMeta, "%s:/apps/mymenuifymod/tmp", device_Name(device));
-	//logfile("filepath[%s]\n", filepath_NewMeta);
-	tmpFile = fopen(filepath_NewMeta, "ab");
-	if(!tmpFile) {
-		logfile("Unable to open file [%s:/apps/mymenuifymod/tmp]\n", device_Name(device));
-		return 0;
-	}
-	//logfile("mode[%i]\n", mode);
-	if(mode == 1) {
-		if(!disable_wDance)
-			newFile = "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<app version='1'>\n<name>MyMenuifyMod</name>\n<version>3.0</version>\n<coder>Scooby74029</coder>\n<short_description>Theme Installer</short_description>\n<long_description>A Theme Installer for Wii and vWii .</long_description>\n<ahb_access/>\n<!Disclaimer/>\n<wDance/>\n</app>";
-		if(disable_wDance)
-			newFile = "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<app version='1'>\n<name>MyMenuifyMod</name>\n<version>3.0</version>\n<coder>Scooby74029</coder>\n<short_description>Theme Installer</short_description>\n<long_description>A Theme Installer for Wii and vWii .</long_description>\n<ahb_access/>\n<!Disclaimer/>\n<!wDance/>\n</app>";
-	}
-	if(mode == 2) {
-		if(!disable_Disclaimer)
-			newFile = "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<app version='1'>\n<name>MyMenuifyMod</name>\n<version>3.0</version>\n<coder>Scooby74029</coder>\n<short_description>Theme Installer</short_description>\n<long_description>A Theme Installer for Wii and vWii .</long_description>\n<ahb_access/>\n<Disclaimer/>\n<!wDance/>\n</app>";
-		if(disable_Disclaimer)
-			newFile = "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<app version='1'>\n<name>MyMenuifyMod</name>\n<version>3.0</version>\n<coder>Scooby74029</coder>\n<short_description>Theme Installer</short_description>\n<long_description>A Theme Installer for Wii and vWii .</long_description>\n<ahb_access/>\n<!Disclaimer/>\n<!wDance/>\n</app>";
-	}
-	if(mode == 3) {
-		if(!disable_wDance)
-			newFile = "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<app version='1'>\n<name>MyMenuifyMod</name>\n<version>3.0</version>\n<coder>Scooby74029</coder>\n<short_description>Theme Installer</short_description>\n<long_description>A Theme Installer for Wii and vWii .</long_description>\n<ahb_access/>\n<Disclaimer/>\n<wDance/>\n</app>";
-		if(disable_wDance)
-			newFile = "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<app version='1'>\n<name>MyMenuifyMod</name>\n<version>3.0</version>\n<coder>Scooby74029</coder>\n<short_description>Theme Installer</short_description>\n<long_description>A Theme Installer for Wii and vWii .</long_description>\n<ahb_access/>\n<Disclaimer/>\n<!wDance/>\n</app>";
-	}
-	if(mode == 4) {
-		if(!disable_Disclaimer)
-			newFile = "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<app version='1'>\n<name>MyMenuifyMod</name>\n<version>3.0</version>\n<coder>Scooby74029</coder>\n<short_description>Theme Installer</short_description>\n<long_description>A Theme Installer for Wii and vWii .</long_description>\n<ahb_access/>\n<Disclaimer/>\n<wDance/>\n</app>";
-		if(disable_Disclaimer)
-			newFile = "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<app version='1'>\n<name>MyMenuifyMod</name>\n<version>3.0</version>\n<coder>Scooby74029</coder>\n<short_description>Theme Installer</short_description>\n<long_description>A Theme Installer for Wii and vWii .</long_description>\n<ahb_access/>\n<!Disclaimer/>\n<wDance/>\n</app>";
-	}
-	fprintf(tmpFile, newFile);
-	fclose(meta_File);
-	fclose(tmpFile);
-	remove(filepath_Meta);
-	rename(filepath_NewMeta, filepath_Meta);
-	return 1;
+	return true;
 }
 bool Disclaimer() {
 	u32 buttons;
@@ -860,14 +844,14 @@ bool Disclaimer() {
 	
 	for(;;) {
 		DrawFrameStart();
-		WriteCentre(95, "[DISCLAIMER] :");
-		WriteFont(90, 155, "THIS APPLICATION COMES WITH NO    ");
-		WriteFont(90, 180, "WARRANTY AT ALL, NEITHER EXPRESSED");
-		WriteFont(90, 205, "NOR IMPLIED . I DO NOT TAKE ANY   ");
-		WriteFont(90, 230, "RESPONSIBILITY FOR ANY DAMAGE TO  "); 
-		WriteFont(90, 255, "YOUR WII CONSOLE BECAUSE OF       ");
-		WriteFont(90, 280, "IMPROPER USE OF THIS SOFTWARE .   ");
-		WriteCentre(390, "[A] Continue                  [B] Exit"); 
+		WriteCentre(40, "[DISCLAIMER] :");
+		WriteFont(50, 110, "THIS APPLICATION COMES WITH NO    ");
+		WriteFont(50, 140, "WARRANTY AT ALL, NEITHER EXPRESSED");
+		WriteFont(50, 170, "NOR IMPLIED . I DO NOT TAKE ANY   ");
+		WriteFont(50, 200, "RESPONSIBILITY FOR ANY DAMAGE TO  "); 
+		WriteFont(50, 230, "YOUR WII/WIIU CONSOLE BECAUSE OF  ");
+		WriteFont(50, 260, "IMPROPER USE OF THIS SOFTWARE .   ");
+		WriteFont(50, 350, "[A] Continue                        [B] Exit"); 
 		DrawFrameFinish();
 		
 		buttons = wpad_waitbuttons();
@@ -883,7 +867,7 @@ bool Disclaimer() {
 	}
 	return user_choice;
 }
-const char *getregion(u32 num) {
+const char *get_display_region(u32 num) {
     switch(num) {
     case 417:
     case 449:
@@ -916,7 +900,7 @@ const char *getregion(u32 num) {
     break;
     }
 }
-const char *getsysvernum(u32 num) {
+const char *get_display_version(u32 num) {
     switch(num)
     {
     case 416:
@@ -1017,75 +1001,119 @@ s32 getdir(char *path, dirent_t **ent, u32 *cnt){
 	free(nbuf);
 	return 0;
 }
-u32 GetSysMenuVersion() {
+s32 GetTMD(u64 tid, signed_blob **outbuf, u32 *outlen) {
+	void *p_tmd = NULL;
+
+	u32 len;
+	s32 ret;
+
+	/* Get TMD size */
+	ret = ES_GetStoredTMDSize(tid, &len);
+	if (ret < 0)
+		return ret;
+
+	/* Allocate memory */
+	p_tmd = allocate_memory(len);
+	if (!p_tmd)
+		return -1;
+
+	/* Read TMD */
+	ret = ES_GetStoredTMD(tid, p_tmd, len);
+	if (ret < 0)
+		goto err;
+
+	/* Set values */
+	*outbuf = p_tmd;
+	*outlen = len;
+
+	return 0;
+
+err:
+	/* Free memory */
+	free(p_tmd);
+
+	return ret;
+}
+s32 GetVersion(u64 tid, u16 *outbuf, bool *vWii) {
+	signed_blob *p_tmd = NULL;
+	tmd      *tmd_data = NULL;
+
+	u32 len;
+	s32 ret;
+
+	/* Get title TMD */
+	ret = GetTMD(tid, &p_tmd, &len);
+	if (ret < 0)
+		return ret;
+
+	/* Retrieve TMD info */
+	tmd_data = (tmd *)SIGNATURE_PAYLOAD(p_tmd);
+
+	/* Set values */
+	*outbuf = tmd_data->title_version;
+	*vWii = (bool)tmd_data->vwii_title;
+	/* Free memory */
+	free(p_tmd);
+
+	return 0;
+}
+u32 Get_system_version() {
     //Get sysversion from TMD
     u64 TitleID = 0x0000000100000002LL;
-    u32 tmd_size;
-	u32 version;
-	//bool is_vWii;
-	
-    s32 r = ES_GetTMDViewSize(TitleID, &tmd_size);
-    if(r<0)
-    {
-        //logfile("error getting TMD views Size. error %d\n",r);
-        return r;
-    }
-
-    tmd_view *rTMD = (tmd_view*)memalign( 32, (tmd_size+31)&(~31) );
-    if( rTMD == NULL )
-    {
-        //logfile("error making memory for tmd views\n");
-        return 0;
-    }
-    memset(rTMD,0, (tmd_size+31)&(~31) );
-    r = ES_GetTMDView(TitleID, (u8*)rTMD, tmd_size);
-    if(r<0)
-    {
-        //logfile("error getting TMD views. error %d\n",r);
-        free( rTMD );
-        return r;
-    }
-    version = rTMD->title_version;
-	//is_vWii = (bool)rTMD->vwii_title;
-    if(rTMD)
-    {
-        free(rTMD);
-    }
-	//*isvWii = is_vWii;
+	u16 version;
+	bool is_vWii;
+	GetVersion(TitleID, &version, &is_vWii);
+	if(Debugger) logfile("is_vWii[%d]\n",is_vWii);
+	system_is_vWii = is_vWii;
     return version;
 }
-u32 checkcustomsystemmenuversion() {
+u32 check_custom_system_version() {
 	u32 nandfilecnt = 0, filecounter = 0, knownversioncounter = 0;
-	char *knownversionstr = "";
+	char *knownversionstr = NULL;
 	
 	getdir("/title/00000001/00000002/content",&nandfilelist,&nandfilecnt);
 	for(filecounter = 0; filecounter < nandfilecnt; filecounter++) {
 		for(knownversioncounter = 0; knownversioncounter < KNOWN_THEME_CONTENTS; knownversioncounter++) {
 			knownversionstr = knownappfilenames[knownversioncounter];
-			if(!strcmp(nandfilelist[filecounter].name, knownversionstr)) return known_Versions[knownversioncounter];
+			if(strcmp(nandfilelist[filecounter].name, knownversionstr) == 0) return known_Versions[knownversioncounter];
 		}
 	}
 	return 0;
 }
-void draw_System_Info(s32 ios) {
-	sprintf(textbuf, "IOS: %i_v%i     System Menu: %s_%s", ios, IOS_GetRevision(), getsysvernum(systemmenuVersion), getregion(systemmenuVersion));
-	DrawFrameStart();
-	WriteCentre(95, textbuf);
+char* find_theme_Content() {
+	u32 nandfilecnt = 0, filecounter = 0, knownversioncounter = 0;
+	char *knownversionstr = "";
 	
+	getdir("/title/00000001/00000002/content",&nandfilelist,&nandfilecnt);
+	for(filecounter = 0; filecounter < nandfilecnt; filecounter++) {
+		if(Debugger) logfile("file = %s\n", nandfilelist[filecounter].name);
+		for(knownversioncounter = 0; knownversioncounter < KNOWN_THEME_CONTENTS; knownversioncounter++) {
+			knownversionstr = knownappfilenames[knownversioncounter];
+			if(!strcmp(nandfilelist[filecounter].name, knownversionstr)) return nandfilelist[filecounter].name;
+		}
+	}
+	return "ERROR";
+}
+void draw_System_Info() {
+	s32 Ios = IOS_GetVersion();
+	sprintf(textbuf, "IOS: %i", Ios);       
+	DrawFrameStart();
+	WriteFont(50, 75, textbuf);
+	sprintf(textbuf, "System Menu: %s_%s v%u", get_display_version(system_version), get_display_region(system_version), system_version);
+	WriteFont(50, 50, textbuf);
 	return;
 }
 void exit_Program() {
 	const char *types[] = { "System Menu", "Home Brew Channel", "PriiLoader" };
 	int type = 0;
 	u32 buttons;
-	s32 Ios = IOS_GetVersion();
 	
 	for(;;) {
-		draw_System_Info(Ios);
+		draw_System_Info();
 		sprintf(textbuf,"Exit To:   %s", types[type]);
-		WriteFont(80, 230, textbuf);
-		WriteFont(80, 330, "[Left]/[Right] Toggle Exit");
-		WriteFont(80, 360, "[A] Select Exit  [B] Back");
+		WriteFont(50, 110, textbuf);
+		WriteFont(50, 320, "[Left]/[Right] Toggle Exit");
+		WriteFont(50, 350, "[A] Select Exit  [B] Back");
 		DrawFrameFinish();
 		buttons = wpad_waitbuttons();
 		
@@ -1104,26 +1132,26 @@ void exit_Program() {
 	}
 	switch(type) {
 		case 0:
-			draw_System_Info(Ios);
-			WriteCentre(220, "MyMenuifyMod      ");
-			WriteCentre(260, "Exit System Menu  ");
+			draw_System_Info();
+			WriteFont(200, 180, "MyMenuifyMod      ");
+			WriteFont(200, 220, "Exit System Menu  ");
 			DrawFrameFinish();
 			sleep(1);
 			system_exit_Menu();
 		break;
 		case 1:
 		default:
-			draw_System_Info(Ios);
-			WriteCentre(220, "MyMenuifyMod");
-			WriteCentre(260, "    Exit HBC");
+			draw_System_Info();
+			WriteFont(200, 180, "MyMenuifyMod      ");
+			WriteFont(200, 220, "Exit HBC          ");
 			DrawFrameFinish();
 			sleep(1);
 			system_exit_HBC();
 		break;
 		case 2:
-			draw_System_Info(Ios);
-			WriteCentre(220, "MyMenuifyMod     ");
-			WriteCentre(260, "Exit PriiLoader  ");
+			draw_System_Info();
+			WriteFont(200, 180, "MyMenuifyMod      ");
+			WriteFont(200, 220, "Exit Priiloader   ");
 			DrawFrameFinish();
 			sleep(1);
 			system_Exit_Priiloader();
@@ -1259,7 +1287,8 @@ void get_title_key(signed_blob *s_tik, u8 *key, bool is_vWii) {
     static u8 iv[16] ATTRIBUTE_ALIGN(0x20);
     static u8 keyin[16] ATTRIBUTE_ALIGN(0x20);
     static u8 keyout[16] ATTRIBUTE_ALIGN(0x20);
-
+	u8 wii_common_key[16] = { 0xeb, 0xe4, 0x2a, 0x22, 0x5e, 0x85, 0x93, 0xe4, 0x48,0xd9, 0xc5, 0x45, 0x73, 0x81, 0xaa, 0xf7 };
+	u8 vWii_common_key[16] = { 0x30, 0xBF, 0xC7, 0x6E, 0x7C, 0x19, 0xAF, 0xBB, 0x23, 0x16, 0x33, 0x30, 0xCE, 0xD7, 0xC2, 0x8D };
     const tik *p_tik;
     p_tik = (tik*) SIGNATURE_PAYLOAD(s_tik);
     u8 *enc_key = (u8 *) &p_tik->cipher_title_key;
@@ -1272,8 +1301,8 @@ void get_title_key(signed_blob *s_tik, u8 *key, bool is_vWii) {
 	else
 		aes_set_key(vWii_common_key);
     aes_decrypt(iv, keyin, keyout, sizeof keyin);
-
     memcpy(key, keyout, sizeof keyout);
+	return;
 }
 static void decrypt_buffer(u16 index, u8 *source, u8 *dest, u32 len) {
     static u8 iv[16];
@@ -1411,169 +1440,40 @@ int getslot(int num) {
         break;
     }
 }
-s32 __u8Cmp(const void *a, const void *b) {
-    return *(u8 *)a-*(u8 *)b;
-}
-u8 *get_ioslist(u32 *cnt) {
-    u64 *buf = 0;
-    s32 i, res;
-    u32 tcnt = 0, icnt;
-    u8 *ioses = NULL;
-
-    //Get stored IOS versions.
-    res = ES_GetNumTitles(&tcnt);
-    if(res < 0) {
-        logfile("ES_GetNumTitles: Error! (result = %d)\n", res);
-        return 0;
-    }
-    buf = memalign(32, sizeof(u64) * tcnt);
-    res = ES_GetTitles(buf, tcnt);
-    if(res < 0) {
-        logfile("ES_GetTitles: Error! (result = %d)\n", res);
-        if (buf) free(buf);
-        return 0;
-    }
-
-    icnt = 0;
-    for(i = 0; i < tcnt; i++) {
-        if(*((u32 *)(&(buf[i]))) == 1 && (u32)buf[i] > 200 && (u32)buf[i] < 252) {
-            icnt++;
-            ioses = (u8 *)realloc(ioses, sizeof(u8) * icnt);
-            ioses[icnt - 1] = (u8)buf[i];
-        }
-    }
-
-    ioses = (u8 *)malloc(sizeof(u8) * icnt);
-    icnt = 0;
-
-    for(i = 0; i < tcnt; i++) {
-        if(*((u32 *)(&(buf[i]))) == 1 && (u32)buf[i] > 200 && (u32)buf[i] < 252) {
-            icnt++;
-            ioses[icnt - 1] = (u8)buf[i];
-        }
-    }
-    free(buf);
-    qsort(ioses, icnt, 1, __u8Cmp);
-
-    *cnt = icnt;
-    return ioses;
-}
-s32 theme_ios_menu(s32 default_ios) {
-    u32 buttons;
-    s32 selected_Ios = 0;
-    u32 ioscount;
-    u8 *list = (u8*)get_ioslist(&ioscount);
-	s32 Ios = IOS_GetVersion();
-	
-    int i;
-    for(i = 0; i < ioscount; i++)
-    {
-        // Default to default_ios if found, else the loaded IOS
-        if(list[i] == default_ios) {
-            selected_Ios = i;
-            break;
-        }
-        if(list[i] == IOS_GetVersion()) {
-            selected_Ios = i;
-        }
-    }
-
-    for(;;)
-    {
-        draw_System_Info(Ios);
-        WriteFont(40, 150, "It is recommended to choose an IOS ");
-        WriteFont(40, 180, "with NAND permissions patched .(ex. 249)");
-		sprintf(textbuf, "Select IOS: %u", list[selected_Ios]);
-		WriteCentre(230, textbuf);
-        
-		WriteFont(60, 350, "[Left]/[Right] Toggle Ios .");
-		WriteFont(60, 375, "[A] Select Ios .          [B] Back .");
-		WriteFont(60, 400, "[Home] Exit to  .");
-		DrawFrameFinish();
-        buttons = wpad_waitbuttons();
-		if(buttons == WPAD_BUTTON_HOME) exit_Program();
-        if(buttons == WPAD_BUTTON_LEFT) { //|| buttons == PAD_BUTTON_LEFT)
-            if (selected_Ios > 0) selected_Ios--;
-            else selected_Ios = ioscount - 1;
-        }
-        if(buttons == WPAD_BUTTON_RIGHT) { //|| buttons == PAD_BUTTON_RIGHT)
-            if (selected_Ios < ioscount - 1) selected_Ios++;
-            else selected_Ios = 0;
-        }
-        if(buttons == WPAD_BUTTON_A) break; //|| buttons == PAD_BUTTON_A) break;
-		if(buttons == WPAD_BUTTON_B) {
-			//filecnt = 0, start = 0, selected = 0;
-			//filecnt = filelist_retrieve();
-			return 0;
-		}
-    }
-    return list[selected_Ios];
-}
 void options_Menu(int device) {
 	u32 buttons;
-	int mode = 0;
-	s32 Ios = IOS_GetVersion(), selected_option = 0, default_ios = 249;
+	
+	s32 selected_option = 0;
 	const char *selected_options[] = {"Disable", "Enable "};
 	const char *current_option[] = {"Disabled", "Enabled"};
-	if(Debugger) logfile("disable_Disclaimer[%i]   disable_wDance[%i]\n", disable_Disclaimer, disable_wDance);
-	bool dis_claim, dis_dance, bugger;
+	bool bugger;
 	
 	if(Debugger) bugger = false;
 	else bugger = true;
-	if(disable_Disclaimer) dis_claim = true;
-	else dis_claim = false;
-	if(disable_wDance) dis_dance = true;
-	else dis_dance = false;
 	
 	for(;;) {
-		draw_System_Info(Ios);
-		WriteCentre(130, "Options");
-		sprintf(textbuf,"Block Disclaimer : %s", current_option[disable_Disclaimer]);
-		WriteFont(70, 160, textbuf);
-		if(selected_option == 0)
-			sprintf(textbuf,"->  %s Disclaimer Block", selected_options[dis_claim]);
-		else
-			sprintf(textbuf,"    %s Disclaimer Block", selected_options[dis_claim]);
-		WriteFont(70, 190, textbuf);
-		sprintf(textbuf,"Block Wario Dance : %s", current_option[disable_wDance]);
-		WriteFont(70, 220, textbuf);
-		if(selected_option == 1)
-			sprintf(textbuf,"->  %s Wario Dance Block", selected_options[dis_dance]);
-		else
-			sprintf(textbuf,"    %s Wario Dance Block", selected_options[dis_dance]);
-		WriteFont(70, 250, textbuf);
-		//if(selected_option == 2)
-		//	WriteFont(50, 260, "->  Reload Ios");
-		//else
-		//	WriteFont(50, 260, "    Reload Ios");
+		draw_System_Info();
+		
 		sprintf(textbuf,"Debugging : %s", current_option[Debugger]);
-		WriteFont(70, 280, textbuf);
-		if(selected_option == 2) 
+		WriteFont(75, 120, textbuf);
+		if(selected_option == 0) 
 			sprintf(textbuf,"->  %s Debugging ", selected_options[bugger]);
 		else
 			sprintf(textbuf,"    %s Debugging ", selected_options[bugger]);
-		WriteFont(70, 310, textbuf);
-		WriteFont(70, 360, "[B] Back");
+		WriteFont(50, 170, textbuf);
+		WriteFont(50, 300, "[B] Back");
 		DrawFrameFinish();
 		
 		buttons = wpad_waitbuttons();
 		if(buttons == WPAD_BUTTON_UP) {
-			selected_option--;
-			if(selected_option < 0)
-				selected_option = 2;
+			
 		}
 		if(buttons == WPAD_BUTTON_DOWN) {
-			selected_option++;
-			if(selected_option > 2)
-				selected_option = 0;
+			
 		}
 		if((buttons == WPAD_BUTTON_LEFT) || (buttons == WPAD_BUTTON_RIGHT)) {
 			if(selected_option == 0)
-				dis_claim ^= 1;
-			if(selected_option == 1)
-				dis_dance ^= 1;
-			if(selected_option == 2)
-				bugger ^= 1;
+				bugger ^= bugger;
 		}
 		if(buttons == WPAD_BUTTON_A) break;
 		if(buttons == WPAD_BUTTON_B) return;
@@ -1593,52 +1493,8 @@ void options_Menu(int device) {
 			exit_Program();
 		}	
 	}
-	if(selected_option == 3) {
-		Ios = theme_ios_menu(default_ios);
-		Fat_Unmount(fatdevicemounted);
-		Wpad_Disconnect();
-		ISFS_Deinitialize();
-		IOS_ReloadIOS(Ios);
-		if(AHBPROT_DISABLED) {
-			IOSPATCH_AHBPROT();
-			IOSPATCH_Apply();
-		}
-		else IOSPATCH_Apply();
-		wpad_init();
-		PAD_Init();
-		ISFS_Initialize();
-		fatdevicemounted = Fat_Mount(fatdevicemounted);
-		Ios = IOS_GetVersion();
-	}
-	if(Debugger) logfile("dis_claim[%i]   dis_dance[%i]\n", dis_claim, dis_dance);
 	if(selected_option == 0) {
-		if(dis_claim) mode = 1;
-		else mode = 3;
-		write_MMM_Config(fatdevicemounted, mode);
-		read_MMM_Config(fatdevicemounted);
-		draw_System_Info(Ios);
-		if(dis_claim) 
-			WriteFont(50, 230, "Disclaimer Block Enabled .");
-		else
-			WriteFont(50, 230, "Disclaimer Block Disabled .");
-		DrawFrameFinish();
-		sleep(1);
-	}
-	if(selected_option == 1) {
-		if(dis_dance) mode = 2;
-		else mode = 4;
-		write_MMM_Config(fatdevicemounted, mode);
-		read_MMM_Config(fatdevicemounted);
-		draw_System_Info(Ios);
-		if(dis_dance)
-			WriteFont(50, 230, "Wario Dance Block Enabled .");
-		else
-			WriteFont(50, 230, "Wario Dance Block Disabled .");
-		DrawFrameFinish();
-		sleep(1);
-	}
-	if(selected_option == 2) {
-		draw_System_Info(Ios);
+		draw_System_Info();
 		if(bugger == Debugger) return;
 		if(bugger == true) {
 			Debugger = true;
@@ -1657,17 +1513,16 @@ void options_Menu(int device) {
 int theme_device_menu() {
 	int device = SD, fat_unmount_device = -1;
 	u32 buttons;
-	s32 Ios = IOS_GetVersion();
 	
 	for(;;) {
-		draw_System_Info(Ios);
-		WriteCentre(150, "Select Device :");
+		draw_System_Info();
+		WriteFont(50, 110, "Select Device :");
 		sprintf(textbuf," %s ", device_Name(device));
-		WriteCentre(210, textbuf);
-		WriteFont(90, 325, "[Left]/[Right] Toggle Device");
-		WriteFont(90, 350, "[A] Select Device");
-		WriteFont(90, 375, "[Home]/[B] Return To");
-		WriteFont(90, 400, "[1] Options");
+		WriteFont(50, 160, textbuf);
+		WriteFont(50, 280, "[Left]/[Right] Toggle Device");
+		WriteFont(50, 305, "[A] Select Device");
+		WriteFont(50, 330, "[Home]/[B] Return To");
+		WriteFont(50, 355, "[1] Options");
 		DrawFrameFinish();
 		
 		buttons = wpad_waitbuttons();
@@ -1697,7 +1552,7 @@ int theme_device_menu() {
 	if(fatdevicemounted <= 0) {
 		fatdevicemounted = Fat_Mount(device);
 		sprintf(textbuf, "Mounting %s ..... Complete .", device_Name(device));
-		WriteCentre(300, textbuf);
+		WriteCentre(160, textbuf);
 		DrawFrameFinish();
 		sleep(1);
 	}
@@ -1705,10 +1560,10 @@ int theme_device_menu() {
 		fat_unmount_device = Fat_Unmount(fatdevicemounted);
 		if (fat_unmount_device < 0) {
 			sprintf(textbuf, "Unmounting %s ..... Failed .", device_Name(fatdevicemounted));
-			WriteCentre(300, textbuf);
+			WriteCentre(160, textbuf);
 			sprintf(textbuf, "[-] Unable to unmount %s .", device_Name(fatdevicemounted));
-			WriteCentre(325, textbuf);
-			WriteCentre(350, "Press any button to continue .");
+			WriteCentre(190, textbuf);
+			WriteCentre(220, "Press any button to continue .");
 			DrawFrameFinish();
 			wpad_waitbuttons();
 			fatdevicemounted = Fat_Mount(device);
@@ -1717,10 +1572,10 @@ int theme_device_menu() {
 			fatdevicemounted = Fat_Mount(device);
 			if(fatdevicemounted < 0) {
 				sprintf(textbuf, "Mounting %s ..... Failed .", device_Name(device));
-				WriteCentre(300, textbuf);
+				WriteCentre(160, textbuf);
 				sprintf(textbuf, "[-] Unable to mount %s .", device_Name(device));
-				WriteCentre(325, textbuf);
-				WriteCentre(350, "Press any button to continue .");
+				WriteCentre(190, textbuf);
+				WriteCentre(220, "Press any button to continue .");
 				DrawFrameFinish();
 				wpad_waitbuttons();
 			}
@@ -1791,7 +1646,7 @@ s32 filelist_retrieve() {
 	
     return filelistcntr;
 }
-/* retrieve size of install file */
+// retrieve size of install file 
 u32 filesize(FILE *file) {
 	u32 curpos, endpos;
 	
@@ -2021,17 +1876,17 @@ bool warnunsignedtheme() {
 	
 	for(;;) {
 		draw_System_Info(Ios);
-		WriteCentre(150, "Unsigned Theme Detected !");
+		WriteCentre(120, "Unsigned Theme Detected !");
 
-		WriteFont(30, 200, "It is recommended to use www.wiithemer.org ,");
-		WriteFont(30, 225, "ModMii, or wii theme manager to build safe");
-		WriteFont(30, 250, "and verified themes ,");
-		WriteFont(30, 275, "Only install this file if you made it");
-		WriteFont(30, 300, "or trust where it came from .");
-		WriteFont(30, 325, "You may continue at own risk .");
+		WriteFont(40, 160, "It is recommended to use www.wiithemer.org,");
+		WriteFont(40, 185, "ModMii, or wii theme manager to build safe");
+		WriteFont(40, 210, "and verified themes ,");
+		WriteFont(40, 235, "Only install this file if you made it");
+		WriteFont(40, 260, "or trust where it came from .");
+		WriteFont(40, 285, "You may continue at own risk .");
 
-		WriteFont(60, 375, "[A] Continue .");
-		WriteFont(60, 400, "[B] Back .");
+		WriteFont(50, 325, "[A] Continue .");
+		WriteFont(50, 350, "[B] Back .");
 		DrawFrameFinish();
 		buttons = wpad_waitbuttons();
 		
@@ -2046,19 +1901,18 @@ bool warnunsignedtheme() {
 }
 void nopriiloadermessage() {
 	u32 buttons;
-	s32 Ios = IOS_GetVersion();
 	
 	for(;;) {
-		draw_System_Info(Ios);
-		WriteCentre(150, "PriiLoader Not Detected !");
+		draw_System_Info();
+		WriteCentre(90, "PriiLoader Not Detected !");
+		WriteCentre(120, "-------------------------------");
+		WriteFont(50, 170, "It is recommended to have Priiloader");
+		WriteFont(50, 200, "installed as Boot2 or Ios before");
+		WriteFont(50, 230, "using this Program .");
+		WriteFont(50, 270, "You may Continue at your Own risk .");
 
-		WriteFont(60, 200, "It is recommended to have priiloader");
-		WriteFont(60, 230, "installed as Boot2 or Ios before");
-		WriteFont(60, 260, "using this Program .");
-		WriteFont(60, 325, "You may Continue at your Own risk .");
-
-		WriteFont(60, 375, "[A]  Continue .");
-		WriteFont(60, 400, "[B]  Select Exit To .");
+		WriteFont(50, 325, "[A]  Continue .");
+		WriteFont(50, 350, "[B]  Exit .");
 		DrawFrameFinish();
 		buttons = wpad_waitbuttons();
 		
@@ -2113,18 +1967,6 @@ bool Is_content_file_U8() {
 		if(Debugger) logfile("content_Data[%i]    u8_magic[%i]\n", content_Data[content_data_Counter], u8_magic[content_data_Counter]);
 	}
 	return is_content;
-}
-bool is_content_vWii(u32 version) {
-	
-	if(Debugger) logfile("version[%u]\n", version);
-	switch(version) {
-		case 608:
-		case 609:
-		case 610:
-			return true;
-		break;
-	}
-	return false;
 }
 const char *signature_display_name(int pos) {
 	switch(pos) {
@@ -2290,8 +2132,7 @@ void find_theme_Info(s32 version, int offset) {
 	u8 *content_Data = NULL;
 	int theme_id_len = 0;
 	offset = offset - 16;
-	bool has_id_signature = check_Id_Signature(version, offset);
-	if(has_id_signature) return;
+	check_Id_Signature(version, offset);
 	
 	sprintf(content_file_Path, "%s:/%s/%s", device_Name(fatdevicemounted), themedir, themefile[selected].name);
 	content_File = fopen(content_file_Path, "rb");
@@ -2360,141 +2201,31 @@ void find_theme_Info(s32 version, int offset) {
 		themeName = "---";
 	return;
 }
-s32 backup_original_Content(FILE * fp) {
+s32 InstallFile(FILE * fp, bool one_button_install, bool has_theme_id) {
 	char * data;
-	s32 ret, nandfile, ios = 2;
+	s32 ret = -1, nandfile;
 	u32 length = 0,numchunks, cursize, i;
 	char filename[ISFS_MAXPATH] ATTRIBUTE_ALIGN(32);
-	//char tmpfilename[ISFS_MAXPATH] ATTRIBUTE_ALIGN(32);
-	u32 newtmdsize ATTRIBUTE_ALIGN(32);
-	u64 newtitleid ATTRIBUTE_ALIGN(32);
-	signed_blob * newtmd;
-	tmd_content * newtmdc, * newtmdcontent = NULL;
 	
-	newtitleid = 0x0000000100000000LL + ios;
-	ES_GetStoredTMDSize(newtitleid, &newtmdsize);
-	newtmd = (signed_blob *) memalign(32, newtmdsize);
-	memset(newtmd, 0, newtmdsize);
-	ES_GetStoredTMD(newtitleid, newtmd, newtmdsize);
-	newtmdc = TMD_CONTENTS((tmd *) SIGNATURE_PAYLOAD(newtmd));
-	for(i = 0; i < ((tmd *) SIGNATURE_PAYLOAD(newtmd))->num_contents; i++)
-	{
-		if(newtmdc[i].index == 1)
-		{
-			newtmdcontent = &newtmdc[i];
-			if(newtmdc[i].type & 0x8000) //Shared content! This is the hard part :P.
-				return -1;
-			else {//Not shared content, easy
-				//sprintf(content_name, "%08x.app", newtmdcontent->cid + );
-				//sprintf(tmpfilename, "/tmp/%08x.app", newtmdcontent->cid);
-				sprintf(filename, "/title/00000001/%08x/content/%08x.app", ios, newtmdcontent->cid + 0x10000000);
+	char *contentname;
+	if(one_button_install) contentname = getsavename(system_version);
 	
-				break;
-			}
-		}
-		else if(i == (((tmd *) SIGNATURE_PAYLOAD(newtmd))->num_contents) - 1)
-			return -1;
-	}
-	free(newtmd);
-	//sprintf(content_name, "%s.app", content_File);
-	//content_name[0] = '1';
-	//if(Debugger) logfile("tmpfilename[%s]\n", tmpfilename);
-	
+	char* content_name = stpcpy(filename, "/title/00000001/00000002/content/");
+	sprintf(content_name, "%s", find_theme_Content());
 	if(Debugger) logfile("filename[%s] length[%i]\n", filename, strlen(filename));
-	
-	nandfile = ISFS_Open(filename, ISFS_OPEN_RW);
-	if(!nandfile) return -199;
-	ISFS_Seek(nandfile, 0, SEEK_SET);
-	length = filesize(fp);
-	numchunks = length/CHUNKS + ((length % CHUNKS != 0) ? 1 : 0);
-	if(Debugger) logfile("Installing %s\n", filename);
-	if(Debugger) logfile("[+] Total parts: %d\n", numchunks);
-	
-	for(i = 0; i < numchunks; i++)
-	{
-		data = memalign(32, CHUNKS);
-		if(data == NULL)
-		{
-			if(Debugger) logfile("\t[-] Error allocating memory !\n\n");
-			return -1;
-		}
-		if(Debugger) logfile("Installing part %d\n", (i + 1));
-		ret = fread(data, 1, CHUNKS, fp);
-		if (ret < 0) 
-		{
-			if(Debugger) logfile("\t[-] Error reading from SD ! (ret = %d)\n\n", ret);
-			//wpad_waitbuttons();
-			return -2;
-		}
-		else
-		{
-			cursize = ret;
-		}
-		ret = ISFS_Write(nandfile, data, cursize);
-		if(ret < 0)
-		{
-			if(Debugger) logfile("\t[-] Error writing to NAND ! (ret = %d)\n\n", ret);
-			//wpad_waitbuttons();
-			return ret;
-		}
-		free(data);
-		
-		if(Debugger) logfile("Complete .\n");
-	}
-	ISFS_Close(nandfile);
-	//ISFS_Rename(tmpfilename, filename);
-	return 0;
-}
-s32 InstallFile(FILE * fp, bool backup) {
-	char * data;
-	s32 ret = -1, nandfile, ios = 2;
-	u32 length = 0,numchunks, cursize, i;
-	char filename[ISFS_MAXPATH] ATTRIBUTE_ALIGN(32);
-	char tmpfilename[ISFS_MAXPATH] ATTRIBUTE_ALIGN(32);
-	u32 newtmdsize ATTRIBUTE_ALIGN(32);
-	u64 newtitleid ATTRIBUTE_ALIGN(32);
-	signed_blob * newtmd;
-	tmd_content * newtmdc, * newtmdcontent = NULL;
-	s32 Ios = IOS_GetVersion();
-	newtitleid = 0x0000000100000000LL + ios;
-	ES_GetStoredTMDSize(newtitleid, &newtmdsize);
-	newtmd = (signed_blob *) memalign(32, newtmdsize);
-	memset(newtmd, 0, newtmdsize);
-	ES_GetStoredTMD(newtitleid, newtmd, newtmdsize);
-	newtmdc = TMD_CONTENTS((tmd *) SIGNATURE_PAYLOAD(newtmd));
-	for(i = 0; i < ((tmd *) SIGNATURE_PAYLOAD(newtmd))->num_contents; i++)
-	{
-		if(newtmdc[i].index == 1)
-		{
-			newtmdcontent = &newtmdc[i];
-			if(newtmdc[i].type & 0x8000) //Shared content! This is the hard part :P.
-				return -1;
-			else {//Not shared content, easy
-				
-				if(backup == 1) {
-					sprintf(tmpfilename, "/title/00000001/%08x/content/00000%02x", ios, newtmdcontent->cid);
-					sprintf(filename, "/title/00000001/%08x/content/000000%02x.app", ios, newtmdcontent->cid);
-				}
-				else sprintf(filename, "/title/00000001/%08x/content/000000%02x.app", ios, newtmdcontent->cid);
-				break;
-			}
-		}
-		else if(i == (((tmd *) SIGNATURE_PAYLOAD(newtmd))->num_contents) - 1)
-			return -1;
-	}
-	free(newtmd);
-	if(Debugger) logfile("backup = %i\n", backup);
-	logfile("filename[%s] length[%i]\n", filename, strlen(filename));
 	nandfile = ISFS_Open(filename, ISFS_OPEN_RW);
 	ISFS_Seek(nandfile, 0, SEEK_SET);
 	length = filesize(fp);
 	numchunks = length/CHUNKS + ((length % CHUNKS != 0) ? 1 : 0);
-	draw_System_Info(Ios);
-	sprintf(textbuf, "Installing %s", themefile[selected].name);
-	WriteFont(80, 135, textbuf);
+	draw_System_Info();
+	
+	if(has_theme_id) sprintf(textbuf, "Installing %s", (one_button_install == true ? contentname : themeName));
+	else sprintf(textbuf, "Installing %s", (one_button_install == true ? contentname : themefile[selected].name));
+	WriteFont(50, 135, textbuf);
 	sprintf(textbuf, "[+] Total parts: %d", numchunks);
-	WriteFont(80, 170, textbuf);
+	WriteFont(75, 170, textbuf);
 	DrawFrameFinish();
+	
 	for(i = 0; i < numchunks; i++)
 	{
 		data = memalign(32, CHUNKS);
@@ -2506,21 +2237,22 @@ s32 InstallFile(FILE * fp, bool backup) {
 			//wpad_waitbuttons();
 			return -1;
 		}
-		draw_System_Info(Ios);
-		sprintf(textbuf, "Installing %s", themefile[selected].name);
-		WriteFont(80, 135, textbuf);
+		draw_System_Info();
+		if(has_theme_id) sprintf(textbuf, "Installing %s", (one_button_install == true ? contentname : themeName));
+		else sprintf(textbuf, "Installing %s", (one_button_install == true ? contentname : themefile[selected].name));
+		WriteFont(50, 135, textbuf);
 		sprintf(textbuf, "[+] Total parts: %d", numchunks);
-		WriteFont(80, 170, textbuf);
+		WriteFont(75, 170, textbuf);
 		sprintf(textbuf, "Installing part %d", (i + 1));
-		WriteFont(80, 200, textbuf);
+		WriteFont(75, 200, textbuf);
 		DrawFrameFinish();
 		ret = fread(data, 1, CHUNKS, fp);
 		if (ret < 0) 
 		{
 			logfile("\t[-] Error reading from SD ! (ret = %d)\n\n", ret);
 			sprintf(textbuf, "[-] Error reading from SD ! (ret = %d)", ret);
-			WriteFont(80, 230, textbuf);
-			WriteFont(80, 260, "Press any button to continue .");
+			WriteFont(75, 230, textbuf);
+			WriteFont(75, 260, "Press any button to continue .");
 			DrawFrameFinish();
 			wpad_waitbuttons();
 			return -2;
@@ -2530,20 +2262,21 @@ s32 InstallFile(FILE * fp, bool backup) {
 			cursize = ret;
 		}
 		wiilight(1);
-		draw_System_Info(Ios);
-		sprintf(textbuf, "Installing %s", themefile[selected].name);
-		WriteFont(80, 135, textbuf);
+		draw_System_Info();
+		if(has_theme_id) sprintf(textbuf, "Installing %s", (one_button_install == true ? contentname : themeName));
+		else sprintf(textbuf, "Installing %s", (one_button_install == true ? contentname : themefile[selected].name));
+		WriteFont(50, 135, textbuf);
 		sprintf(textbuf, "[+] Total parts: %d", numchunks);
-		WriteFont(80, 170, textbuf);
+		WriteFont(75, 170, textbuf);
 		sprintf(textbuf, "Installing part %d", (i + 1));
-		WriteFont(80, 200, textbuf);
+		WriteFont(75, 200, textbuf);
 		ret = ISFS_Write(nandfile, data, cursize);
 		if(ret < 0)
 		{
 			logfile("\t[-] Error writing to NAND ! (ret = %d)\n\n", ret);
 			sprintf(textbuf, "[-] Error writing to NAND ! (ret = %d)", ret);
-			WriteFont(80, 230, textbuf);
-			WriteFont(80, 260, "Press any button to continue .");
+			WriteFont(75, 230, textbuf);
+			WriteFont(75, 260, "Press any button to continue .");
 			DrawFrameFinish();
 			wpad_waitbuttons();
 			wiilight(0);
@@ -2551,13 +2284,12 @@ s32 InstallFile(FILE * fp, bool backup) {
 		}
 		free(data);
 		
-		WriteFont(80, 230, "Complete .");
+		WriteFont(75, 230, "Complete .");
 		wiilight(0);
 		DrawFrameFinish();
 	}
 	ISFS_Close(nandfile);
-	if(backup) { ret = ISFS_Rename(filename, tmpfilename);
-	logfile("return from ISFS rename = %i", ret); }
+	
 	return 0;
 }
 void theme_manage_menu() {
@@ -2565,16 +2297,25 @@ void theme_manage_menu() {
 	f32 sizeoffile;
 	char filepath[256];
 	FILE *tmpfile;
-	u32 size, buttons;
+	u32 size, buttons, x;
 	bool install_file = false;
 	bool is_content_file = false;
-	
+	bool found_backup_name = false;
 	bool acknowledge_theme_unsigned = false;
-	s32 Ios = IOS_GetVersion();
-	draw_System_Info(Ios);
-	WriteFont(80, 140, "Gathering Info ... ");
+	//s32 Ios = IOS_GetVersion();
+	draw_System_Info();
+	WriteFont(50, 140, "Gathering Info ... ");
 	DrawFrameFinish();
 	int content_has_signature = check_file_Signature();
+	if(content_has_signature == 0) {
+		for(x = 0; x < KNOWN_THEME_CONTENTS; x++) {
+			if(!strcmp(known_backup_names[x], themefile[selected].name)) found_backup_name = true;
+		}
+		if(!found_backup_name) {
+			acknowledge_theme_unsigned = warnunsignedtheme();
+			if(!acknowledge_theme_unsigned) return;
+		}
+	}
 	u32 install_version = verify_content_file_Version(themefile[selected].name);
 	//bool is_vWii = false;
 	//bool is_device_vWii = false;
@@ -2606,27 +2347,31 @@ void theme_manage_menu() {
 	//WriteFont(80, 140, "Gathering Info ... Complete .");
 	//DrawFrameFinish();
 	for(;;) {
-		draw_System_Info(Ios);
+		draw_System_Info();
 		sprintf(textbuf, "Theme :  %s", (themeName != NULL ? themeName : themefile[selected].name));
-		WriteFont(80, 140, textbuf);
+		WriteFont(50, 110, textbuf);
 		sprintf(textbuf, "File size :  %.2f MB", sizeoffile);
-		WriteFont(80, 170, textbuf);
-		sprintf(textbuf, "Theme Id :  %s", data_id);
-		WriteFont(80, 200, textbuf);
-		sprintf(textbuf, "Channel Outline Spin Option   %s", data_spin);
-		WriteFont(80, 230, textbuf);
-		sprintf(textbuf, "Base Content :  %s.app     %s_%s", data_content, getsysvernum(install_version), getregion(install_version));
-		WriteFont(80, 260, textbuf);
-		sprintf(textbuf, "Signature :  %s", signature_display_name(content_has_signature));
-		WriteFont(80, 290, textbuf);
-		WriteFont(80, 350, "[Home]  Exit To");
-		WriteFont(80, 375, "[A] Install   [B]  Back");
+		WriteFont(50, 140, textbuf);
+		if(themeName != NULL) {
+			sprintf(textbuf, "Theme Id :  %s", data_id);
+			WriteFont(50, 170, textbuf);
+			sprintf(textbuf, "Channel Outline Spin Option   %s", data_spin);
+			WriteFont(50, 200, textbuf);
+			sprintf(textbuf, "Base Content : 000000%s.app    %s_%s", data_content, get_display_version(install_version), get_display_region(install_version));
+			WriteFont(50, 230, textbuf);
+		}
+		if(content_has_signature != 0) {
+			sprintf(textbuf, "Signature :  %s", signature_display_name(content_has_signature));
+			WriteFont(50, 260, textbuf);
+		}
+		WriteFont(50, 325, "[Home]  Exit To");
+		WriteFont(50, 350, "[A] Install   [B]  Back");
 		
 		DrawFrameFinish();
 		
 		buttons = wpad_waitbuttons();
 		
-		if(buttons == WPAD_BUTTON_HOME) exit_Program();
+		if(buttons == WPAD_BUTTON_HOME) return exit_Program();
 		if(buttons == WPAD_BUTTON_A) { install_file = true; break;}
 		if(buttons == WPAD_BUTTON_B) { 
 			themeName = NULL;
@@ -2646,21 +2391,18 @@ void theme_manage_menu() {
 	}
 	if(!install_file) return;
 	
-	if(content_has_signature == 0) {
-		acknowledge_theme_unsigned = warnunsignedtheme();
-		if(!acknowledge_theme_unsigned) return;
-	}
-	draw_System_Info(Ios);
+	
+	draw_System_Info();
 	sprintf(textbuf, "Installing %s", (themeName != NULL ? themeName : themefile[selected].name));
-	WriteFont(80, 135, textbuf);
+	WriteFont(50, 135, textbuf);
 	// check if file is a u8 archive
 	is_content_file = Is_content_file_U8();
 	if(Debugger) logfile("is_content_file[%i]\n", is_content_file);
 	if(!is_content_file) {
-		WriteFont(80, 180, "This File is not a U8 archive !");
-		WriteFont(80, 205, "Unable to use this file .");
-		WriteFont(80, 335, "Press any button to return");
-		WriteFont(80, 360, "to the Selection Menu !");
+		WriteFont(50, 175, "This File is not a U8 archive !");
+		WriteFont(50, 200, "Unable to use this file .");
+		WriteFont(50, 325, "Press any button to return");
+		WriteFont(50, 350, "to the Selection Menu !");
 		DrawFrameFinish();
 		wpad_waitbuttons();
 		return;
@@ -2673,10 +2415,10 @@ void theme_manage_menu() {
 	if(Debugger) logfile("install theme region [%i]\n", themefile[selected].region);
 	//is_vWii = is_content_vWii(themefile[selected].version);
 	//if(Debugger) logfile("is_vWii[%i]\n", is_vWii);
-	currentTheme.version = systemmenuVersion;
+	currentTheme.version = system_version;
 	//if(currentTheme.version > 610)  currentTheme.version = checkcustomsystemmenuversion();
 	if(Debugger) logfile("current theme version [%i]\n", currentTheme.version);
-	currentTheme.region = find_content_Region(systemmenuVersion);
+	currentTheme.region = find_content_Region(system_version);
 	if(Debugger) logfile("current theme region [%i]\n", currentTheme.region);
 	
 	if(currentTheme.version != themefile[selected].version) { 
@@ -2704,9 +2446,9 @@ void theme_manage_menu() {
 		return;
 	}
 	DrawFrameFinish();
-	draw_System_Info(Ios);
+	draw_System_Info();
 	sprintf(textbuf, "Installing %s", (themeName != NULL ? themeName : themefile[selected].name));
-	WriteFont(80, 135, textbuf);
+	WriteFont(50, 135, textbuf);
 	sprintf(filepath, "%s:/%s/%s", device_Name(fatdevicemounted), themedir, themefile[selected].name);
 	tmpfile = fopen(filepath, "rb");
 	if(!tmpfile) {
@@ -2714,12 +2456,12 @@ void theme_manage_menu() {
 		return;
 	}
 	DrawFrameFinish();
-	InstallFile(tmpfile, 0);
+	InstallFile(tmpfile, false, (themeName != NULL ? true : false));
 	fclose(tmpfile);
-	draw_System_Info(Ios);
+	draw_System_Info();
 	sprintf(textbuf, "Installing %s ", (themeName != NULL ? themeName : themefile[selected].name));
-	WriteFont(80, 135, textbuf);
-	WriteFont(80, 170, "Complete .");
+	WriteFont(50, 135, textbuf);
+	WriteFont(50, 170, "Complete .");
 	DrawFrameFinish();
 	free_Png();
 	sleep(2);
@@ -2730,11 +2472,10 @@ void theme_manage_menu() {
 int downloadApp() {
 	//s32 rtn;
     u32 tmpversion;
-    int ret;
+    s32 ret;
     int counter;
 	int retries = 50, retrycnt, switch_path = 0;
-    char *savepath = (char*)memalign(32, 256);
-	bool content_is_vWii = false;
+	char *savePath = memalign(32, 128);
     char *wiiserverlist[] = {"cetk", "tmd."};
 	signed_blob * s_tik = NULL;
     signed_blob * s_tmd = NULL;
@@ -2742,66 +2483,80 @@ int downloadApp() {
     u32 http_status = 0;
 	char * wii_titleId = "0000000100000002";
 	char *vWii_titleId = "0000000700000002";
+	const char *wiishoppath = "http://nus.cdn.shop.wii.com/ccs/download";             // Nus Wii
+	const char *wiiU_shoppath = "http://ccs.cdn.wup.shop.nintendo.net/ccs/download"; // Nus Wii U
+	const char *RC24path = "http://ccs.cdn.sho.rc24.xyz/ccs/download";                // Nus Emu RC24
 	char *titleId;
 	const char *download_Path;
-	s32 Ios = IOS_GetVersion();
-    tmpversion = GetSysMenuVersion();
-    //logfile("dvers =%d \n", tmpversion);
+    tmpversion = Get_system_version();
+	
+    if(Debugger) logfile("dvers =%d \n", tmpversion);
     //if(tmpversion > 610) tmpversion = checkcustomsystemmenuversion();
 	//if(!tmpversion) return -5;
-	content_is_vWii = is_content_vWii(tmpversion);
-	if(content_is_vWii) titleId = vWii_titleId;
+	//content_is_vWii = is_content_vWii(tmpversion);
+	if(system_is_vWii) titleId = vWii_titleId;
 	else titleId = wii_titleId;
-    draw_System_Info(Ios);
+    draw_System_Info();
 	//sprintf(textbuf, "Theme :  %s", themefile[selected].name);
-	WriteFont(80, 140, "Initializing  Network ..... ");
+	WriteFont(50, 140, "Initializing  Network ..... ");
 	DrawFrameFinish();
-    draw_System_Info(Ios);
+	sleep(1);
+    draw_System_Info();
     for(retrycnt = 0; retrycnt < retries; retrycnt++) {
         ret = net_init();
-		if(ret == 0) { WriteFont(80, 140, "Initializing  Network ..... Complete ."); DrawFrameFinish(); break; }
+		if(ret == 0) { WriteFont(50, 140, "Initializing  Network ..... Complete ."); DrawFrameFinish(); break; }
+		if(retrycnt >= 50) { WriteFont(50, 140, "Initializing  Network ..... Failed ."); DrawFrameFinish(); break; }
     }
-	if(retrycnt >= 50) { WriteFont(80, 140, "Initializing  Network ..... Failed ."); DrawFrameFinish(); return ret; }
+	if(retrycnt >= 50) return ret;
 	sleep(1);
-	draw_System_Info(Ios);
-	sprintf(textbuf, "Downloading %s for", getsavename(tmpversion));
-	WriteFont(80, 140, textbuf);
+	draw_System_Info();
+	WriteFont(50, 140, "Downloading Content from");
 	sprintf(textbuf, "System Menu v%d", tmpversion);
-	WriteFont(80, 170, textbuf);
+	WriteFont(50, 170, textbuf);
 	DrawFrameFinish();
 	sleep(2);
+	
 	download_Path = wiishoppath;
 	for(counter = 0; counter < 3;) {	
         int app_pos = getslot(tmpversion);
         char *path = (char*)memalign(32, 256);
 		if(counter == 0) {
             sprintf(path,"%s/%s/%s", download_Path, titleId, wiiserverlist[counter]);
-            logfile("path[%s]\nDowloading Ticket .... ", path);
-			draw_System_Info(Ios);
-			WriteFont(80, 140, "Dowloading Ticket .... ");
+            if(Debugger) logfile("path[%s]\nDowloading Ticket .... ", path);
+			draw_System_Info();
+			WriteFont(50, 140, "Downloading Content from");
+			sprintf(textbuf, "System Menu v%d", tmpversion);
+			WriteFont(50, 170, textbuf);
+			WriteFont(75, 220, "Dowloading Ticket .... ");
 			DrawFrameFinish();
-			sleep(1);
+			//sleep(1);
 			ret = http_request(path, MAX_SIZE_HTTP, false);
 			
         }
         else if(counter == 1) {
             sprintf(path,"%s/%s/%s%d", download_Path, titleId, wiiserverlist[counter], tmpversion);
-            logfile("Dowloading Tmd .... ");
-			draw_System_Info(Ios);
-			WriteFont(80, 140, "Dowloading Tmd .... ");
+            if(Debugger) logfile("Dowloading Tmd .... ");
+			draw_System_Info();
+			WriteFont(50, 140, "Downloading Content from");
+			sprintf(textbuf, "System Menu v%d", tmpversion);
+			WriteFont(50, 170, textbuf);
+			WriteFont(75, 220, "Dowloading Tmd .... ");
 			DrawFrameFinish();
-			sleep(1);
+			//sleep(1);
 			ret = http_request(path, MAX_SIZE_HTTP, false);
 			
         }
         else if(counter == 2) {
             sprintf(path,"%s/%s/%s", download_Path, titleId, appfilename_noext(app_pos));
-            logfile("Dowloading %s .... ", getsavename(tmpversion));
-			draw_System_Info(Ios);
+            if(Debugger) logfile("Dowloading %s .... ", getsavename(tmpversion));
+			draw_System_Info();
+			WriteFont(50, 140, "Downloading Content from");
+			sprintf(textbuf, "System Menu v%d", tmpversion);
+			WriteFont(50, 170, textbuf);
 			sprintf(textbuf, "Downloading %s .... ", getsavename(tmpversion));
-			WriteFont(80, 140, textbuf);
+			WriteFont(75, 220, textbuf);
 			DrawFrameFinish();
-			sleep(1);
+			//sleep(1);
 			ret = http_request(path, MAX_SIZE_HTTP, false);
 			
         }
@@ -2809,9 +2564,9 @@ int downloadApp() {
             free(path);
 			path = NULL;
             //logfile("download failed !! ret(%d)\n",ret);
-            logfile("Failed !! ret(%d)\n",ret);
-			draw_System_Info(Ios);
-			WriteFont(80, 140, "Dowload .... Failed .");
+            if(Debugger) logfile("Failed !! ret(%d)\n",ret);
+			draw_System_Info();
+			WriteFont(75, 220, "Downloading .... Failed .");
 			DrawFrameFinish();
 			sleep(1);
 			download_Path = wiiU_shoppath;
@@ -2829,36 +2584,51 @@ int downloadApp() {
         u8* outbuf = (u8*)malloc(outlen);
         if(counter == 0) {
 			ret = http_get_result(&http_status, (u8 **)&s_tik, &outlen);
-			draw_System_Info(Ios);
-			WriteFont(80, 140, "Dowloading Ticket .... Complete .");
+			draw_System_Info();
+			WriteFont(50, 140, "Downloading Content from");
+			sprintf(textbuf, "System Menu v%d", tmpversion);
+			WriteFont(50, 170, textbuf);
+			WriteFont(75, 220, "Dowloading Ticket .... Complete .");
 			DrawFrameFinish();
 			sleep(1);
 		}
         if(counter == 1) {
 			ret = http_get_result(&http_status, (u8 **)&s_tmd, &outlen);
-			draw_System_Info(Ios);
-			WriteFont(80, 140, "Dowloading Tmd .... Complete .");
+			draw_System_Info();
+			WriteFont(50, 140, "Downloading Content from");
+			sprintf(textbuf, "System Menu v%d", tmpversion);
+			WriteFont(50, 170, textbuf);
+			WriteFont(75, 220, "Dowloading Tmd .... Complete .");
 			DrawFrameFinish();
 			sleep(1);
 		}
         if(counter == 2) {
 			ret = http_get_result(&http_status, &outbuf, &outlen);
-			draw_System_Info(Ios);
-			sprintf(textbuf, "Downloading %s .... Complete .", getsavename(tmpversion));
-			WriteFont(80, 140, textbuf);
-			DrawFrameFinish();
-		}
-        logfile("\nDecrypting files ....");
-		if(counter == 2) {
-			draw_System_Info(Ios);
-			WriteFont(80, 140, "Decrypting files ....");
+			draw_System_Info();
+			WriteFont(50, 140, "Downloading Content from");
+			sprintf(textbuf, "System Menu v%d", tmpversion);
+			WriteFont(50, 170, textbuf);
+			sprintf(textbuf, "Downloading %s ....", getsavename(tmpversion));
+			WriteFont(75, 220, textbuf);
+			WriteFont(75, 250, "Complete .");
 			DrawFrameFinish();
 			sleep(1);
 		}
+        if(Debugger) logfile("\nDecrypting files ....");
+		if(counter == 2) {
+			draw_System_Info();
+			WriteFont(50, 140, "Downloading Content from");
+			sprintf(textbuf, "System Menu v%d", tmpversion);
+			WriteFont(50, 170, textbuf);
+			WriteFont(75, 220, "Decrypting File ....");
+			DrawFrameFinish();
+			sleep(1);
+		}
+		
         //set aes key
         u8 key[16];
         u16 index;
-        get_title_key(s_tik, key, content_is_vWii);
+        get_title_key(s_tik, key, system_is_vWii);
         aes_set_key(key);
         u8* outbuf2 = (u8*)malloc(outlen);
         if(counter == 2) {
@@ -2866,24 +2636,38 @@ int downloadApp() {
                 index = 01;
                 //then decrypt buffer
                 decrypt_buffer(index,outbuf,outbuf2,outlen);
-				logfile("Complete !! \n\n");
-				draw_System_Info(Ios);
-				WriteFont(80, 140, "Decrypting File .... Complete .");
+				if(Debugger) logfile("Complete !! \n\n");
+				draw_System_Info();
+				WriteFont(50, 140, "Downloading Content from");
+				sprintf(textbuf, "System Menu v%d", tmpversion);
+				WriteFont(50, 170, textbuf);
+				WriteFont(75, 220, "Decrypting File .... Complete .");
 				DrawFrameFinish();
-				sleep(1);
-                sprintf(savepath,"%s:/%s/%s", device_Name(fatdevicemounted), themedir, getsavename(tmpversion));
-				logfile("Saving file .....");
-				draw_System_Info(Ios);
-				WriteFont(80, 140, "Saving File .... ");
+				sleep(2);
+				draw_System_Info();
+				WriteFont(50, 140, "Downloading Content from");
+				sprintf(textbuf, "System Menu v%d", tmpversion);
+				WriteFont(50, 170, textbuf);
+				sprintf(textbuf, "Saving %s to Storage Device ... ", content_name_no_Extension(tmpversion));
+				WriteFont(75, 220, textbuf);
 				DrawFrameFinish();
-                ret = Fat_SaveFile(savepath, (void *)&outbuf2, outlen);
-				draw_System_Info(Ios);
-				WriteFont(80, 140, "Saving File .... Complete .");
+				
+				if(Debugger) logfile("Saving file .....");
+				sprintf(savePath, "%s:/themes/%s_bkup.app", device_Name(fatdevicemounted), content_name_no_Extension(system_version));
+                ret = Fat_SaveFile(savePath, (void *)&outbuf2, outlen);
+				
+				draw_System_Info();
+				WriteFont(50, 140, "Downloading Content from");
+				sprintf(textbuf, "System Menu v%d", tmpversion);
+				WriteFont(50, 170, textbuf);
+				sprintf(textbuf, "Saving %s to Storage Device ...", content_name_no_Extension(tmpversion));
+				WriteFont(75, 220, textbuf);
+				WriteFont(75, 250, "Complete .");
 				DrawFrameFinish();
-				sleep(1);
+				sleep(2);
             }
         }
-        logfile("Complete !! \n\n");
+        if(Debugger) logfile("Complete !! \n\n");
 		
         if(outbuf != NULL) {
             free(outbuf);
@@ -2897,81 +2681,34 @@ int downloadApp() {
     }
 	net_deinit();
 	
+	if(savePath != NULL) {
+		free(savePath);
+		savePath = NULL;
+	}
+	
 	sleep(2);
 	
-	if(!Fat_CheckFile(savepath)) {
-		if(savepath != NULL)
-            free(savepath);
-			savepath = NULL;
-		return -99;
-	}
-	
-	if(savepath != NULL) {
-        free(savepath);
-		savepath = NULL;
-	}
     return 1;
 }
-void backup_content_to_Nand(const char *content_File) {
-	if(Debugger) logfile("backup_content_to_Nand()\n");
-	if(Debugger) logfile("content_File[%s]\n", content_File);
-	dirent_t *priiloaderfiles = NULL;
-	u32 nandfilecnt;
-	int filecntr, rtn;
-	char searchstr[256];
-	char content_to_backup_Path[256];
-	bool content_Backedup = false;
-	FILE *ContentFile;
-	
-	sprintf(searchstr, "%s.app", content_File);
-	searchstr[0] = '1';
-	if(Debugger) logfile("searchstr[%s]\n", searchstr);
-	rtn = getdir("/title/00000001/00000002/content",&priiloaderfiles,&nandfilecnt);
-	if(rtn < 0)
-		return;
-	for(filecntr = 0; filecntr < nandfilecnt; filecntr++) {
-		if(Debugger) logfile("prii_name[%s]\n", priiloaderfiles[filecntr].name);
-		if(!strcmp(priiloaderfiles[filecntr].name, searchstr)) {
-			if(Debugger) logfile("prii_name[%s] matched\n", priiloaderfiles[filecntr].name);
-			content_Backedup = true;
-			break;
-		}
-	}
-	if(!content_Backedup) {
-		sprintf(content_to_backup_Path, "%s:/%s/%s", device_Name(fatdevicemounted), themedir, getsavename(systemmenuVersion));
-		if(Debugger) logfile("content_to_backup_Path[%s]\n", content_to_backup_Path);
-		ContentFile = fopen(content_to_backup_Path, "rb");
-		if(!ContentFile) {
-			if(Debugger) logfile("unable to open %s .\n", content_to_backup_Path);
-			return;
-		}
-		InstallFile(ContentFile, true);
-		fclose(ContentFile);
-	}
-	
-	return;
-}
 void theme_list_menu() {
-	u32 cnt, buttons;
+	u32 cnt, buttons; 
 	s32 index;
-	int success = 0, version = 0, region = 0;
-	char filepath[256];
-	FILE *tmpfile;
-	int list_start_line = 165;
-	s32 Ios = IOS_GetVersion();
-	char *name = '\0';
+	int success = 0;
+	int list_start_line = 135;
+	bool original_content_backed_Up = false;
+	char filename[ISFS_MAXPATH] ATTRIBUTE_ALIGN(32);
+	FILE * saved_original_theme;
 	if(fatdevicemounted <= 0) return;
 	
 	filecnt = filelist_retrieve();
 	
 	for(;;) {
-		draw_System_Info(Ios);
+		draw_System_Info();
 		sprintf(textbuf, "[%i] Theme files . Select a Theme :", (filecnt <= 0 ? 0 : filecnt));
-		WriteCentre(120, textbuf);
+		WriteFont(50, 105, textbuf);
 		if(filecnt <= 0) {
-			WriteCentre(230, "[-] No Files Found .");
+			WriteCentre(200, "[-] No Files Found .");
 			DrawFrameFinish();
-			return;
 		}
 		else {
 			for (cnt = start; cnt < filecnt; cnt++) {
@@ -2985,13 +2722,13 @@ void theme_list_menu() {
 				(cnt == selected) ? WriteFont(50, list_start_line, textbuf) : WriteFont(20, list_start_line, textbuf2);
 				list_start_line += 25;
 			}
-			list_start_line = 165;
+			list_start_line = 135;
 		}
 		
-		WriteFont(70, 310, "[Up]/[Down] Navigate Menu");
-		WriteFont(70, 335, "[A] Select Theme .  [B] Back");
-		WriteFont(70, 360, "[+] Download/Install Original Theme");
-		WriteFont(70, 385, "[Home] Return To");
+		WriteFont(50, 275, "[Up]/[Down] Navigate Menu");
+		WriteFont(50, 300, "[A] Select Theme .  [B] Back");
+		WriteFont(50, 325, "[+] Download/Install Original Theme");
+		WriteFont(50, 350, "[Home] Back");
 		
 		DrawFrameFinish();
 		
@@ -3019,107 +2756,30 @@ void theme_list_menu() {
 		//logfile("1selected[%i]  cnt[%i]\n", selected, cnt);
 		
 		if(buttons == WPAD_BUTTON_PLUS) {
-			
-			sprintf(filepath, "%s:/%s/%s", device_Name(fatdevicemounted), themedir, getsavename(systemmenuVersion));
-			if(!Fat_CheckFile(filepath)) {
+			sprintf(filename, "%s:/themes/%s_bkup.app", device_Name(fatdevicemounted), content_name_no_Extension(system_version));
+			original_content_backed_Up = Fat_CheckFile(filename);
+			if(Debugger) logfile("original_content_backed up[%i].\n", original_content_backed_Up);
+			if(!original_content_backed_Up) {
 				success = downloadApp();
 				if(success <= 0) {
 					if(Debugger) logfile("unable to download .\n");
 					return;
 				}
-				else {
-					//draw_System_Info(Ios);
-					//WriteFont(80, 140, "Saving File to Nand .... ");
-					//DrawFrameFinish();
-					//sleep(1);
-					//backup_content_to_Nand(content_name_no_Extension(systemmenuVersion));
-				}
 			}
-			else {
-				if(Debugger) logfile("Found [%s].\n", filepath);
-				//draw_System_Info(Ios);
-				//WriteFont(80, 140, "Saving File to Nand .... ");
-				//DrawFrameFinish();
-				//sleep(1);
-				//backup_content_to_Nand(content_name_no_Extension(systemmenuVersion));
-			}
-			draw_System_Info(Ios);
-			sprintf(textbuf, "Checking %s", getsavename(systemmenuVersion));
-			WriteFont(80, 135, textbuf);
-			DrawFrameFinish();
-			version = verify_content_file_Version(getsavename(systemmenuVersion));
-			if(Debugger) logfile("install theme version [%i]\n", getsavename(systemmenuVersion));
-			//if(themefile[selected].version > 610) themefile[selected].version = checkcustomsystemmenuversion();
-			region = find_content_Region(version);
-			if(Debugger) logfile("install theme region [%i]\n", region);
-			//is_vWii = is_content_vWii(themefile[selected].version);
-			//if(Debugger) logfile("is_vWii[%i]\n", is_vWii);
-			currentTheme.version = systemmenuVersion;
-			//if(currentTheme.version > 610)  currentTheme.version = checkcustomsystemmenuversion();
-			if(Debugger) logfile("current theme version [%i]\n", currentTheme.version);
-			currentTheme.region = find_content_Region(systemmenuVersion);
-			if(Debugger) logfile("current theme region [%i]\n", currentTheme.region);
-			
-			if(currentTheme.version != version) { 
-				sprintf(textbuf, "Installing %s - Failed", getsavename(systemmenuVersion));
-				WriteFont(80, 135, textbuf);
-				WriteFont(80, 160, "Install can not continue !");
-				WriteFont(80, 185, "The install theme version is not a match");
-				WriteFont(80, 210, "for the system menu version .");
-				WriteFont(80, 335, "Press any button to return");
-				WriteFont(80, 360, "to the Selection Menu !");
-				DrawFrameFinish();
-				wpad_waitbuttons();
-				return;
-			}
-			if(currentTheme.region != region) {
-				sprintf(textbuf, "Installing %s ..... Failed", getsavename(systemmenuVersion));
-				WriteFont(80, 135, textbuf);
-				WriteFont(80, 160, "Install can not continue !");
-				WriteFont(80, 185, "The install theme region is not a match");
-				WriteFont(80, 210, "for the system menu region .");
-				WriteFont(80, 335, "Press any button to return");
-				WriteFont(80, 360, "to the Selection Menu !");
-				DrawFrameFinish();
-				wpad_waitbuttons();
-				return;
-			}
-			
-			draw_System_Info(Ios);
-			sprintf(textbuf, "Installing %s", getsavename(systemmenuVersion));
-			WriteFont(80, 135, textbuf);
-			DrawFrameFinish();
-			
-			name = getsavename(systemmenuVersion);
-			sprintf(themefile[selected].name, "%s", name);
-			sprintf(filepath, "%s:/%s/%s", device_Name(fatdevicemounted), themedir, getsavename(systemmenuVersion));
-			tmpfile = fopen(filepath, "rb");
-			if(!tmpfile) {
-				logfile("unable to open %s .\n", filepath);
-				return;
-			}
-			//if(Debugger) logfile("backup true\n");
-			//InstallFile(tmpfile, true);
-			if(Debugger) logfile("backup false\n");
-			InstallFile(tmpfile, false);
-			fclose(tmpfile);
-			draw_System_Info(Ios);
-			sprintf(textbuf, "Installing %s ", getsavename(systemmenuVersion));
-			WriteFont(80, 135, textbuf);
-			WriteFont(80, 170, "Complete .");
-			DrawFrameFinish();
-			free_Png();
-			sleep(2);
+			saved_original_theme = fopen(filename, "rb");
+			if(!saved_original_theme) return;
+			InstallFile(saved_original_theme, true, (themeName != NULL ? true : false));
 			exit_Program();
+			filecnt = filelist_retrieve();
 		}
 		
 		if (selected <= -1) {
 			selected = filecnt - 1;
-			list_start_line = 165;
+			list_start_line = 135;
 		}
 		if (selected >= filecnt) {
 			selected = 0;
-			list_start_line = 165;
+			list_start_line = 135;
 		}
 		//logfile("2selected[%i]  cnt[%i]\n", selected, cnt);
 		// List scrolling 
@@ -3127,11 +2787,11 @@ void theme_list_menu() {
 
 		if (index >= FILES_PER_PAGE) {
 			start += index - (FILES_PER_PAGE - 1);
-			list_start_line = 165;
+			list_start_line = 135;
 		}
 		if (index <= -1) {
 			start += index;
-			list_start_line = 165;
+			list_start_line = 135;
 		}
 		//logfile("3selected[%i]  cnt[%i]\n\n", selected, cnt);
 	}
@@ -3139,82 +2799,70 @@ void theme_list_menu() {
 	return;
 }
 int main() {
-	bool Exit_App = false;
-	//u32 number_of_patches = 0, AHBPROT_Patched = 0;
-	s32 Ios = 0;
+	bool Exit_App = false, settingsfile = false;
+	u32 number_of_patches = 0, AHBPROT_Patched = 0;
+	//s32 Ios = 0;
 	
 	__exception_setreload(5);
 	
-	Ios = IOS_GetVersion();
-	/*if(Debugger) {
+	//Ios = IOS_GetVersion();
+	if(Debugger) {
 		fatdevicemounted = Fat_Mount(SD);
-		if(!fatdevicemounted) {
-			fatdevicemounted = Fat_Mount(USB);
-			logfile("Debugging of MyMenuifyMod Started \n");
-		}
-	}*/
+		logfile("Debugging of MyMenuifyMod Started [%i]\n", fatdevicemounted);
+	}
 	if(AHBPROT_DISABLED) {
-		//AHBPROT_Patched = 
-		IOSPATCH_AHBPROT();
-		/*if(!AHBPROT_Patched) {
+		AHBPROT_Patched = IOSPATCH_AHBPROT();
+		if(!AHBPROT_Patched) {
 			if(Debugger) logfile("Unable to patch AHBPROT %i \n", AHBPROT_Patched);
 			
 		}
 		else {
 			if(Debugger) logfile("Patched AHBPROT %i \n", AHBPROT_Patched);
-		}*/
-		//number_of_patches = 
-		IOSPATCH_Apply();
+		}
+		number_of_patches = IOSPATCH_Apply();
 	}
 	else 
-		//number_of_patches = 
-		IOSPATCH_Apply();
-	//if(Debugger) logfile("number_of_patches [%i] \n", number_of_patches);
+		number_of_patches = IOSPATCH_Apply();
+	if(Debugger) logfile("number_of_patches [%i] \n", number_of_patches);
+	
 	Initialise();
-	if(!fatdevicemounted) {
-		fatdevicemounted = Fat_Mount(SD);
-	}
-	if(!fatdevicemounted) {
-		fatdevicemounted = Fat_Mount(USB);
-	}
-	if(!fatdevicemounted) {
-		draw_System_Info(Ios);
-		WriteCentre(220, "Unable to mount Sd or Usb .");
-		WriteCentre(260, "Exiting ...");
+	
+	system_version = Get_system_version();
+	if(Debugger) logfile("systemmenuversion = %i\n", system_version);
+	if(system_version > 610) {
+		if(Debugger) logfile("custom systemmenuversion = %i\n", system_version);
+		
+		draw_System_Info();
+		sprintf(textbuf, "Custom System Version Detected: v%i", system_version);
+		WriteCentre(220, textbuf);
+		system_version = check_custom_system_version();
+		sprintf(textbuf, "Real Version: v%i", system_version);
+		WriteCentre(240, textbuf);
 		DrawFrameFinish();
-		sleep(1);
-		exit_Program();
-	}
-	systemmenuVersion = GetSysMenuVersion();
-	if(Debugger) logfile("systemmenuversion = %d\n", systemmenuVersion);
-	if(systemmenuVersion > 610) {
-		if(Debugger) logfile("custom systemmenuversion = %d\n", systemmenuVersion);
-		draw_System_Info(Ios);
-		WriteCentre(220, "Custom System Version Detected .");
-		WriteCentre(240, "Unable to Install Themes .");
-		WriteCentre(260, "Exiting .");
-		DrawFrameFinish();
-		exit_Program();
+		sleep(2);
 	} 
+	
+	settingsfile = read_Settings();
+	if(!settingsfile) {
+		Exit_App = Disclaimer();
+		if(Exit_App) {
+			exit_Program();
+			exit(0);
+		}
+		else 
+			settingsfile = write_Settings();
+	}
+	
 	priiloader_found = checkforpriiloader();
 	if(!priiloader_found) 
 		nopriiloadermessage();
-	read_MMM_Config(fatdevicemounted);
-	if(!disable_Disclaimer) {
-		Exit_App = Disclaimer();
-		if(Exit_App) 
-			exit_Program();
-	}
 	
-	if(!disable_wDance) 
-		W_Dance(4);
-	else {
-		draw_System_Info(Ios);
-		WriteCentre(220, "MyMenuifyMod");
-		WriteCentre(260, "WELCOME");
-		DrawFrameFinish();
-	}
-	sleep(1);
+	draw_System_Info();
+	WriteCentre(175, "MyMenuifyMod");
+	WriteCentre(225, "   WELCOME  ");
+	DrawFrameFinish();
+	
+	sleep(2);
 	for(;;) {
 		
 		fatdevicemounted = theme_device_menu();
